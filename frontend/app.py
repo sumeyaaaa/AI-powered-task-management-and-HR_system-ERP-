@@ -1,6 +1,7 @@
 import streamlit as st
 from auth import AuthManager, initialize_auth
 import streamlit as st
+import os
 import requests
 import pandas as pd
 from datetime import datetime
@@ -37,7 +38,11 @@ def main():
         st.session_state.force_task_refresh = False
     
     # Sidebar logo and info
-    st.sidebar.image(r"C:\Users\leanchem\Desktop\HR and ERP project\AI-powered-task-management-and-HR_system-ERP-\image\photo_2025-09-25_16-18-26.jpg", width=150)
+   # Build the full path to the image
+    image_path = os.path.join(os.path.dirname(__file__), "..", "image", "photo_2025-09-25_16-18-26.jpg")
+
+    # Display in sidebar
+    st.sidebar.image(image_path, width=150)
     st.sidebar.markdown("---")
     
     # Show appropriate page based on authentication and role
