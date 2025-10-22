@@ -4,7 +4,7 @@ from datetime import datetime
 from auth import token_required
 import secrets
 import uuid
-from werkzeug.utils import secure_filename
+
 
 # Configure allowed file extensions and upload folder
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
