@@ -2453,8 +2453,7 @@ def show_employee_task_details_tab(task, task_manager):
         st.write(f"**Priority:** {task.get('priority', 'medium').title()}")
         st.write(f"**Due Date:** {task.get('due_date', 'Not set')[:10]}")
         st.write(f"**Status:** {task.get('status', 'not_started').title()}")
-        st.write(f"**Goal:** {task.get('objectives', {}).get('title', 'General')}")
-        
+        st.write(f"**Goal:** {task.get('objectives', {}).get('title') if task.get('objectives') else 'General'}")
         # Check if deadline is overdue
         if task.get('due_date'):
             due_date = datetime.fromisoformat(task['due_date'].replace('Z', ''))

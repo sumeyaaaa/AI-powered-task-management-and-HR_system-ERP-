@@ -523,7 +523,14 @@ def create_enhanced_task_notification(task_id, notification_type, message, assig
     try:
         supabase = get_supabase_client()
         
-        # Get task details
+        # DEDUPLICATION: Check for recent duplicate notification (last 2 minutes)
+        duplicate_check = supabase.table("notifications").select("id").eq("meta->>task_id", task_id).eq("meta->>type", notification_type).eq("to_employee", task.get('assigned_to')).gte("created_at", (datetime.utcnow() - timedelta(minutes=2)).isoformat()).execute()
+        
+        if duplicate_check.data:
+            print(f"⏭️  Skipping duplicate notification for task {task_id}, type {notification_type}")
+            return
+        
+        # Get task details with assigned employee information
         task_result = supabase.table("action_plans").select("task_description, assigned_to, assigned_to_multiple").eq("id", task_id).execute()
         if not task_result.data:
             return
@@ -545,6 +552,23 @@ def create_enhanced_task_notification(task_id, notification_type, message, assig
             else:
                 # Fallback to user's name from token if available
                 current_user_name = g.user.get('name', 'Unknown')
+        
+        # Get assigned employee names
+        assigned_employee_names = []
+        assigned_to_multiple_names = []
+        
+        # Get primary assigned employee name
+        if task.get('assigned_to'):
+            emp_result = supabase.table("employees").select("name").eq("id", task['assigned_to']).execute()
+            if emp_result.data:
+                assigned_employee_names.append(emp_result.data[0].get('name', 'Unknown'))
+        
+        # Get multiple assigned employee names
+        if task.get('assigned_to_multiple'):
+            for emp_id in task['assigned_to_multiple']:
+                emp_result = supabase.table("employees").select("name").eq("id", emp_id).execute()
+                if emp_result.data:
+                    assigned_to_multiple_names.append(emp_result.data[0].get('name', 'Unknown'))
         
         # Determine recipients based on notification type
         recipients = set()
@@ -576,6 +600,13 @@ def create_enhanced_task_notification(task_id, notification_type, message, assig
         # Create notifications for all recipients
         for recipient in recipients:
             if recipient:  # Ensure recipient is not None
+                # SECONDARY DEDUPLICATION: Check per recipient
+                recipient_duplicate = supabase.table("notifications").select("id").eq("meta->>task_id", task_id).eq("meta->>type", notification_type).eq("to_employee", recipient).gte("created_at", (datetime.utcnow() - timedelta(minutes=2)).isoformat()).execute()
+                
+                if recipient_duplicate.data:
+                    print(f"⏭️  Skipping duplicate notification for recipient {recipient}")
+                    continue
+                
                 notification_data = {
                     "to_employee": recipient,
                     "channel": "in_app",
@@ -585,7 +616,11 @@ def create_enhanced_task_notification(task_id, notification_type, message, assig
                         "task_description": task['task_description'][:100], 
                         "type": notification_type,
                         "assigned_by": assigned_by,
-                        "added_by": current_user_name,  # NEW: Add the employee name who triggered the notification
+                        "added_by": current_user_name,
+                        "assigned_to": task.get('assigned_to'),
+                        "assigned_to_name": assigned_employee_names[0] if assigned_employee_names else None,
+                        "assigned_to_multiple": task.get('assigned_to_multiple', []),
+                        "assigned_to_multiple_names": assigned_to_multiple_names,
                         "note_preview": note_preview,
                         "specially_attached": True if attached_to or attached_to_multiple else False,
                         "timestamp": datetime.utcnow().isoformat()
@@ -599,7 +634,6 @@ def create_enhanced_task_notification(task_id, notification_type, message, assig
                 
     except Exception as e:
         print(f"⚠️ Failed to create notification: {e}")
-
 
 
 def fallback_task_classification(goal_data):
@@ -1220,6 +1254,10 @@ def get_goal_tasks(goal_id):
         print(f"❌ Error getting goal tasks: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+def get_general_tasks_objective_id():
+    """Return the ID for the General Tasks objective"""
+    return "6fa01185-8218-4c8c-b3c9-a66311dfe53f"
+
 @task_bp.route('/api/tasks', methods=['POST'])
 @token_required
 def create_task():
@@ -1236,6 +1274,11 @@ def create_task():
         
         # Validate and sanitize UUID fields
         objective_id = safe_uuid(data.get('objective_id'))
+        
+        # If no objective_id provided, use the General Tasks objective
+        if not objective_id:
+            objective_id = get_general_tasks_objective_id()  # Use your existing General Tasks objective
+        
         assigned_to = safe_uuid(data.get('assigned_to'))
         
         # Handle multiple assignees if provided
@@ -1277,7 +1320,7 @@ def create_task():
                     result.data[0]['id'],
                     "task_assigned",
                     f"New task assigned: {data['task_description'][:100]}...",
-                    goal_id=objective_id
+                    assigned_by=g.user.get('name', 'Admin')
                 )
             
             return jsonify({'success': True, 'task': result.data[0]})
@@ -1285,6 +1328,7 @@ def create_task():
             return jsonify({'success': False, 'error': 'Failed to create task'}), 500
             
     except Exception as e:
+        print(f"❌ Error creating task: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @task_bp.route('/api/tasks/<task_id>', methods=['PUT'])
@@ -1367,13 +1411,33 @@ def update_task(task_id):
             }
             supabase.table("task_updates").insert(update_history).execute()
             
-            # Create notification for significant changes
-            if 'status' in update_data or 'assigned_to' in update_data:
+            # Create notification for significant changes - EXPANDED to include more field changes
+            significant_changes = ['status', 'assigned_to', 'task_description', 'due_date', 'priority', 'estimated_hours']
+            if any(field in update_data for field in significant_changes):
                 notification_type = "task_updated"
-                message = f"Task updated: {current_task['task_description'][:50]}..."
-                assigned_by = g.user.get('name') if user_role == 'employee' else None
+                
+                # Create more descriptive message based on what changed
+                change_messages = []
+                if 'task_description' in update_data:
+                    change_messages.append("description updated")
+                if 'due_date' in update_data:
+                    change_messages.append("due date changed")
+                if 'priority' in update_data:
+                    change_messages.append("priority changed")
+                if 'estimated_hours' in update_data:
+                    change_messages.append("estimated hours updated")
+                if 'status' in update_data:
+                    change_messages.append(f"status changed to {update_data['status']}")
+                if 'assigned_to' in update_data:
+                    change_messages.append("assignment changed")
+                
+                change_summary = ", ".join(change_messages)
+                message = f"Task updated ({change_summary}): {current_task['task_description'][:50]}..."
+                
+                # For admin updates, include their name; for employees, keep as None
+                assigned_by = g.user.get('name') if user_role in ['admin', 'superadmin'] else None
+                
                 create_enhanced_task_notification(task_id, notification_type, message, assigned_by=assigned_by)
-            
             return jsonify({'success': True, 'task': result.data[0]})
         else:
             return jsonify({'success': False, 'error': 'Failed to update task'}), 500
@@ -1538,6 +1602,59 @@ def add_task_update(task_id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+def create_file_upload_notification(task_id, file_name, uploaded_by_name):
+    """Create a simple notification specifically for file uploads"""
+    try:
+        supabase = get_supabase_client()
+        
+        # Get task details
+        task_result = supabase.table("action_plans").select("task_description, assigned_to, assigned_to_multiple").eq("id", task_id).execute()
+        if not task_result.data:
+            return
+        
+        task = task_result.data[0]
+        
+        # Get admin employee ID
+        admin_employee_id = get_admin_employee_id()
+        
+        # Determine recipients - notify task assignees and admin
+        recipients = set()
+        if task.get('assigned_to'):
+            recipients.add(task['assigned_to'])
+        if task.get('assigned_to_multiple'):
+            recipients.update(task['assigned_to_multiple'])
+        
+        # Always notify admin for file uploads
+        if admin_employee_id:
+            recipients.add(admin_employee_id)
+        
+        # Create simple notifications
+        for recipient in recipients:
+            if recipient:
+                notification_data = {
+                    "to_employee": recipient,
+                    "channel": "in_app",
+                    "message": f"File '{file_name}' uploaded to task: {task['task_description'][:50]}...",
+                    "meta": {
+                        "task_id": task_id,
+                        "task_description": task['task_description'][:100],
+                        "type": "file_uploaded",
+                        "uploaded_by": uploaded_by_name,
+                        "file_name": file_name,
+                        "timestamp": datetime.utcnow().isoformat()
+                    },
+                    "priority": "normal",
+                    "created_at": datetime.utcnow().isoformat(),
+                    "is_read": False
+                }
+                supabase.table("notifications").insert(notification_data).execute()
+                print(f"📎 File upload notification sent to {recipient}")
+                
+    except Exception as e:
+        print(f"⚠️ Failed to create file upload notification: {e}")
+
+
 @task_bp.route('/api/tasks/<task_id>/upload-file', methods=['POST'])
 @token_required
 def upload_task_file(task_id):
@@ -1625,16 +1742,12 @@ def upload_task_file(task_id):
         if not update_result.data:
             return jsonify({'success': False, 'error': 'Failed to create task update'}), 500
         
-        # Create notification for file upload
-        create_enhanced_task_notification(
+        # In upload_task_file route, replace the notification call with:
+        create_file_upload_notification(
             task_id,
-            "file_uploaded",
-            f"File uploaded for task: {task['task_description'][:50]}...",
-            employee_id=user_employee_id,
-            employee_name=g.user.get('name', 'Unknown'),
-            file_name=file.filename
+            file.filename,
+            g.user.get('name', 'Unknown')
         )
-        
         return jsonify({
             'success': True, 
             'message': 'File uploaded successfully',
@@ -1899,14 +2012,17 @@ def get_task_notes(task_id):
         notes = []
         if updates_result.data:
             for update in updates_result.data:
+                # FIX: Safely handle the employees relationship which might be None
+                employees_data = update.get('employees') or {}
+                
                 note_data = {
                     'id': update['id'],
                     'notes': update.get('notes', ''),
                     'progress': update.get('progress', 0),
                     'created_at': update.get('created_at'),
                     'updated_by': update.get('updated_by'),
-                    'employee_name': update.get('employees', {}).get('name', 'Unknown'),
-                    'employee_role': update.get('employees', {}).get('role', 'N/A'),
+                    'employee_name': employees_data.get('name', 'Unknown'),  # FIXED: Use safe access
+                    'employee_role': employees_data.get('role', 'N/A'),      # FIXED: Use safe access
                     'has_attachments': bool(update.get('attachments')) and len(update.get('attachments', [])) > 0,
                     'attachments_count': len(update.get('attachments', [])),
                     'attachments': update.get('attachments', [])
