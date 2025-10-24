@@ -1328,16 +1328,7 @@ def show_rag_recommendation_actions(task, task_manager, task_key, rec, index):
             st.session_state[task_key]['selected_recommendation'] = rec
             st.rerun()
     
-    with col3:
-        if st.button(
-            "📊 View Profile", 
-            key=f"profile_{index}_{task['id']}", 
-            use_container_width=True
-        ):
-            # Store employee ID for profile view
-            st.session_state['view_employee_profile'] = rec['employee_id']
-            st.info(f"Would show profile for {rec.get('employee_name', 'employee')}")
-            
+                
 def show_enhanced_recommendation_card(task, task_manager, task_key, rec, index, is_rag_enhanced):
     """Show cleaned up recommendation card with simplified layout"""
     with st.container():

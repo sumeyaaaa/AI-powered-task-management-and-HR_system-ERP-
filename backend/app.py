@@ -8,7 +8,7 @@ load_dotenv()
 
 def create_app():
     app = Flask(__name__)
-    app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'fallback-secret-key-12345')
+    app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY')
     
     CORS(app)
     
@@ -116,5 +116,5 @@ def create_app():
 if __name__ == '__main__':
     app = create_app()
     print("🚀 Starting Unified ERP Backend Server")
-    app.run(host='0.0.0.0', port=10000, debug=False)
-    #app.run(host='127.0.0.1', port=5000, debug=True)
+    #app.run(host='0.0.0.0', port=10000, debug=False)
+    app.run(host='127.0.0.1', port=5000, debug=True)
