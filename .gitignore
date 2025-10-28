@@ -1,2 +1,10 @@
 .env
 .venv
+.frontedn_react
+frontedn_react
+.devcontainer
+.devcontainer
+package-lock.json
+package.json
+node_modules
+

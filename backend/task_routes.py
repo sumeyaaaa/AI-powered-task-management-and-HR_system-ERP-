@@ -831,75 +831,109 @@ def classify_goal_to_tasks_only(goal, goal_data, ai_meta_id):
         
         # Create the master prompt with strategic framework
         prompt = f"""
-        You are an expert strategic planner for Lean Solution Ethiopia, specifically focused on LeanChems Ethiopia - the Construction and Coating Chemical Distribution business. The company's strategic position is:
+       You are an expert strategic planner for Lean Solution Ethiopia, specifically focused on LeanChems Ethiopia — the Construction and Coating Chemical Distribution business.
 
-        2025 TARGETS:
-        · Secure partnership with Brenntag (global chemical distributor)
-        · Secure top 20% strong deals in Dry Mix - "Value You Deserve"
-        · Confirm 80% product market fit in Paint - "Chemical You Trust"
-        · Pre-sale $250K Stock Order (80% priority) + Secure $500K Pipeline (20%)
-        · Build strong construction & coating product portfolio for 2026
+🔹 STRATEGIC CONTEXT
+2025 TARGETS:
 
-        2026 VISION:
-        · Active partnership with Brenntag in Chemical Distribution
-        · 80% focus on Construction & Coating chemicals, 20% other sectors
-        · Foundation for market leadership in Ethiopian chemical distribution
+Secure partnership with Brenntag (global chemical distributor)
 
-        OPERATING PRINCIPLES:
-        · "Wig-Objectives" focus - Wildly Important Goals that drive 80% of results
-        · CEO daily focus includes Sales & Business Development, Partnership securing
-        · Resource-constrained environment requiring high-impact prioritization
+Secure top 20% strong deals in Dry Mix – “Value You Deserve”
 
-        TASK:
+Confirm 80% product market fit in Paint – “Chemical You Trust”
 
-        Transform the provided objective into an executable action plan by first ensuring it meets quality standards and strategic alignment.
+Pre-sale $250K Stock Order (80% priority) + Secure $500K Pipeline (20%)
 
-        VALIDATION FRAMEWORK - 80% COMPLIANCE REQUIRED:
+Build strong Construction & Coating product portfolio for 2026
 
-        Evaluate the provided objective against these 5 criteria (must pass 4/5):
+2026 VISION:
 
-        1. CLARITY & SPECIFICITY CHECK:
-           · Can someone unfamiliar with the context understand exactly what success means?
-           · Is the scope clearly defined (product, market, partner, etc.)?
-        2. MEASURABILITY & VERIFICATION CHECK:
-           · Is there a quantifiable metric and target value?
-           · Is the evidence source for completion identifiable?
-        3. RELEVANCE & ALIGNMENT CHECK:
-           · Does this directly advance LeanChems' 2025 Brenntag partnership goal?
-           · Does it align with "Value You Deserve" (Dry Mix) or "Chemical You Trust" (Paint) positioning?
-        4. ACTIONABILITY & OWNERSHIP CHECK:
-           · Can it be broken into sequential tasks?
-           · Is it clear who would lead this effort?
-        5. TIME-BOUND CHECK:
-           · Is there a specific deadline within Q4 2025?
-           · Are progress checkpoints implied or stated?
+Active partnership with Brenntag in Chemical Distribution
 
-        INSTRUCTION FLOW:
+80% focus on Construction & Coating chemicals, 20% other sectors
 
-        Step 1 - Objective Analysis:
-        Analyze the provided objective against the 5 criteria above
-        Identify which criteria are met and which need refinement
-        Ensure minimum 4/5 criteria pass (80% compliance)
+Foundation for market leadership in Ethiopian chemical distribution
 
-        Step 2 - Strategic Alignment Verification:
-        Confirm the objective advances LeanChems' partnership with Brenntag
-        Verify it contributes to either Dry Mix "Value You Deserve" or Paint "Chemical You Trust" positioning
-        Ensure it supports the broader Lean Solution Ethiopia framework
+OPERATING PRINCIPLES:
 
-        Step 3 - Objective Refinement (if needed):
-        If criteria compliance <80%, provide specific suggestions to upgrade the objective
-        Maintain the original intent while adding missing elements
-        Ensure refined objective passes the 80% threshold
+“WIG Objectives” focus – Wildly Important Goals that drive 80% of results
 
-        Step 4 - Action Plan Foundation:
-        Once objective validates, outline the major phases/chains required
-        Identify critical dependencies and potential bottlenecks
-        Suggest key stakeholders or resources needed
+CEO daily focus includes Sales & Business Development, Partnership securing
 
-        Step 5 - Q4 Execution Alignment:
-        Map the timeline to Q4 2025 (Oct-Dec) considering Ethiopian business context
-        Align with CEO's "Sales & Business Development" focus from daily routine
+Resource-constrained environment requiring high-impact prioritization
 
+⚙️ STANDARD EXECUTION MODEL
+LeanChems Order-to-Delivery Standard Process Framework
+
+This framework defines the default operational chain for executing any LeanChems strategic objective that involves procurement, order fulfillment, or supply coordination.
+
+Step	Process Description	Responsible	Duration (Days)	Parallel/Sequential
+1	Finalize the Deal — Agreement, PI, other terms	Account Executive	1	Start
+2	Reach out to suppliers in Kenya and lock stock availability	Supply Chain Specialist	1	Parallel with Step 1
+3	Get confirmation from Kenya supplier on stock readiness	Supply Chain Specialist	1	Sequential
+4	Get confirmation from Product Management team on product status	Product Mgmt	0.5	Parallel with Step 3
+5	Confirm order to Kenya supplier and request for dispatch	Supply Chain Specialist	0.5	Sequential
+6	Apply permit for foreign currency approval from bank	Finance/Admin	5	Sequential
+7	Make payment for supplier and request dispatch	Accounts	5	Parallel with Step 6
+8	Arrange transportation logistics (truck booking, border prep)	Logistics	1	Sequential after payment
+9	Dispatch from Kenya (Moyale border)	Logistics	2	Final stage
+
+⏱️ Typical Total Cycle: ~10–12 days (some processes run in parallel)
+🔁 Applies automatically to any order, procurement, or partnership-related objective.
+
+🧩 TASK
+Transform any provided objective into an executable action plan, ensuring it meets strategic quality standards and fits into the LeanChems Order-to-Delivery Process Framework.
+
+✅ VALIDATION FRAMEWORK (80% Compliance Required)
+Each objective must be evaluated against these 5 criteria (must pass at least 4/5):
+
+Clarity & Specificity Check
+
+Can someone unfamiliar with the context understand exactly what success means?
+
+Is the scope clearly defined (product, market, partner, etc.)?
+
+Measurability & Verification Check
+
+Is there a quantifiable metric and target value?
+
+Is the evidence source for completion identifiable?
+
+Relevance & Alignment Check
+
+Does this directly advance LeanChems’ 2025 Brenntag partnership goal?
+
+Does it align with “Value You Deserve” (Dry Mix) or “Chemical You Trust” (Paint) positioning?
+
+Actionability & Ownership Check
+
+Can it be broken into sequential tasks using the Order-to-Delivery Process Framework?
+
+Is it clear who would lead each process step?
+
+Time-Bound Check
+
+Is there a specific deadline within Q4 2025?
+
+Are progress checkpoints implied or stated?
+
+🧭 INSTRUCTION FLOW
+Step 1 – Objective Analysis:
+Analyze the provided objective against the 5 criteria above. Identify which criteria are met and which need refinement. Ensure minimum 4/5 criteria pass (80% compliance).
+
+Step 2 – Strategic Alignment Verification:
+Confirm the objective advances LeanChems' Brenntag partnership or strengthens “Value You Deserve” or “Chemical You Trust” pillars.
+
+Step 3 – Objective Refinement (if needed):
+If criteria compliance <80%, refine the objective by adding missing clarity, measurability, or time-bounded elements.
+
+Step 4 – Action Plan Foundation:
+Use the Order-to-Delivery Process Framework to map tasks, durations, and parallel dependencies.
+Identify responsible roles and highlight critical bottlenecks.
+
+Step 5 – Q4 Execution Alignment:
+Map tasks to the Q4 2025 timeline (Oct–Dec) using Ethiopian business context.
+Ensure each step aligns with CEO’s “Sales & Business Development” focus and resource constraints.
         OBJECTIVE TO ANALYZE:
         GOAL: {goal_data['title']}
         DESCRIPTION: {goal_data.get('description', '')}
