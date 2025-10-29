@@ -1059,7 +1059,7 @@ Return ONLY valid JSON in this exact format:
             "assigned_role": "Specific role from available positions"
         }}
     ]
-}
+}}
 
 Generate EXACTLY 10-15 tasks that comprehensively cover the entire delivery process.
 """
