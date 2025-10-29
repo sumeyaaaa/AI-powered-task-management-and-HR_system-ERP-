@@ -850,6 +850,57 @@ OPERATING PRINCIPLES:
 - CEO daily focus includes Sales & Business Development, Partnership securing
 - Resource-constrained environment requiring high-impact prioritization
 
+DEPARTMENT STRUCTURE & JOB DESCRIPTIONS
+
+1. SUPPLY CHAIN DEPARTMENT
+   - Focus: Import/export operations, logistics, and supply chain management
+   - Key Task Keywords: supplier coordination, stock management, order placement, logistics arrangement, customs clearance, border operations, transport coordination, shipment tracking, inventory management, supplier negotiation, export documentation, import documentation, shipping coordination, freight management, cross-border logistics
+   - Typical Responsibilities:
+     * Contact and coordinate with Kenya suppliers for stock availability
+     * Lock inventory and obtain stock confirmations
+     * Manage order placement and supplier communications
+     * Coordinate export documentation from Kenya side
+     * Arrange transportation and logistics
+     * Handle customs clearance processes
+     * Monitor shipment movements cross-border
+     * Manage inventory levels and stock rotations
+
+2. SALES DEPARTMENT  
+   - Focus: Client relationships, marketing, deal finalization, and revenue generation
+   - Key Task Keywords: client communication, deal negotiation, agreement finalization, proforma invoice, commercial terms, customer relationship, sales pipeline, market outreach, client meetings, sales strategy, partnership development, customer acquisition, revenue targets, sales reporting
+   - Typical Responsibilities:
+     * Finalize commercial agreements with clients
+     * Prepare and negotiate Proforma Invoices (PI)
+     * Manage client relationships and communications
+     * Develop sales strategies and outreach plans
+     * Secure partnerships and distribution agreements
+     * Achieve revenue targets and sales objectives
+     * Coordinate with marketing for client acquisition
+
+3. PRODUCT DEVELOPMENT DEPARTMENT
+   - Focus: Product validation, quality assurance, and technical specifications
+   - Key Task Keywords: product validation, quality testing, specification approval, technical assessment, product acceptance, quality standards, product testing, formulation review, material acceptance, technical specifications, quality control, product certification, compliance verification
+   - Typical Responsibilities:
+     * Validate imported product specifications and quality
+     * Test and approve raw materials and finished products
+     * Ensure products meet Ethiopian quality standards
+     * Provide technical approval for product acceptance
+     * Develop product specifications and requirements
+     * Conduct quality control checks and testing
+     * Verify product compliance with regulations
+
+4. FINANCE & ADMIN DEPARTMENT
+   - Focus: Financial transactions, compliance, tax, and administrative operations
+   - Key Task Keywords: payment processing, bank permits, tax payments, financial documentation, foreign currency, bank coordination, tax assessment, financial settlement, compliance, administrative tasks, fund transfer, accounting, financial reporting, budget management, audit preparation
+   - Typical Responsibilities:
+     * Process supplier payments and financial transactions
+     * Apply for foreign currency permits from banks
+     * Handle tax payments and reassessments
+     * Manage financial documentation and settlements
+     * Coordinate with banks for permits and transfers
+     * Ensure compliance with financial regulations
+     * Handle administrative and operational finances
+
 ⚙️ STANDARD ORDER-TO-DELIVERY PROCESS FRAMEWORK (Kenya to Ethiopia)
 This is the mandatory process template for ALL delivery-related objectives:
 
@@ -1008,7 +1059,7 @@ Return ONLY valid JSON in this exact format:
             "assigned_role": "Specific role from available positions"
         }}
     ]
-}}
+}
 
 Generate EXACTLY 10-15 tasks that comprehensively cover the entire delivery process.
 """
