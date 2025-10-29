@@ -821,7 +821,6 @@ def apply_employee_recommendation(task_id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@backoff.on_exception(backoff.expo, Exception, max_tries=2, max_time=10)
 def classify_goal_to_tasks_only(goal, goal_data, ai_meta_id):
     try:
         start_time = time.time()
@@ -831,174 +830,208 @@ def classify_goal_to_tasks_only(goal, goal_data, ai_meta_id):
         
         # Create the master prompt with strategic framework
         prompt = f"""
-       You are an expert strategic planner for Lean Solution Ethiopia, specifically focused on LeanChems Ethiopia — the Construction and Coating Chemical Distribution business.
+You are an expert strategic planner for Lean Solution Ethiopia, specifically focused on LeanChems Ethiopia — the Construction and Coating Chemical Distribution business.
 
 🔹 STRATEGIC CONTEXT
 2025 TARGETS:
-
-Secure partnership with Brenntag (global chemical distributor)
-
-Secure top 20% strong deals in Dry Mix – “Value You Deserve”
-
-Confirm 80% product market fit in Paint – “Chemical You Trust”
-
-Pre-sale $250K Stock Order (80% priority) + Secure $500K Pipeline (20%)
-
-Build strong Construction & Coating product portfolio for 2026
+- Secure partnership with Brenntag (global chemical distributor)
+- Secure top 20% strong deals in Dry Mix – "Value You Deserve"
+- Confirm 80% product market fit in Paint – "Chemical You Trust"
+- Pre-sale $250K Stock Order (80% priority) + Secure $500K Pipeline (20%)
+- Build strong Construction & Coating product portfolio for 2026
 
 2026 VISION:
-
-Active partnership with Brenntag in Chemical Distribution
-
-80% focus on Construction & Coating chemicals, 20% other sectors
-
-Foundation for market leadership in Ethiopian chemical distribution
+- Active partnership with Brenntag in Chemical Distribution
+- 80% focus on Construction & Coating chemicals, 20% other sectors
+- Foundation for market leadership in Ethiopian chemical distribution
 
 OPERATING PRINCIPLES:
+- "WIG Objectives" focus – Wildly Important Goals that drive 80% of results
+- CEO daily focus includes Sales & Business Development, Partnership securing
+- Resource-constrained environment requiring high-impact prioritization
 
-“WIG Objectives” focus – Wildly Important Goals that drive 80% of results
+⚙️ STANDARD ORDER-TO-DELIVERY PROCESS FRAMEWORK (Kenya to Ethiopia)
+This is the mandatory process template for ALL delivery-related objectives:
 
-CEO daily focus includes Sales & Business Development, Partnership securing
+1. FINALIZE DEAL DOCUMENTATION (1 day)
+   - Responsible: Account Executive
+   - Activities: Complete agreement, Proforma Invoice (PI), and other commercial terms
+   - Deliverable: Signed PI and commercial agreement
 
-Resource-constrained environment requiring high-impact prioritization
+2. SUPPLIER STOCK LOCKING (1 day)  
+   - Responsible: Supply Chain Specialist
+   - Activities: Contact Kenya suppliers, verify stock availability, reserve inventory
+   - Deliverable: Stock confirmation with supplier commitment
 
-⚙️ STANDARD EXECUTION MODEL
-LeanChems Order-to-Delivery Standard Process Framework
+3. SUPPLIER STOCK CONFIRMATION (1 day)
+   - Responsible: Supply Chain Specialist
+   - Activities: Obtain written confirmation of stock availability and product specifications
+   - Deliverable: Formal stock confirmation document
 
-This framework defines the default operational chain for executing any LeanChems strategic objective that involves procurement, order fulfillment, or supply coordination.
+4. PRODUCT MANAGEMENT APPROVAL (0.5 day)
+   - Responsible: Product Management Team
+   - Activities: Validate product specifications meet quality standards
+   - Deliverable: Product acceptance confirmation
 
-Step	Process Description	Responsible	Duration (Days)	Parallel/Sequential
-1	Finalize the Deal — Agreement, PI, other terms	Account Executive	1	Start
-2	Reach out to suppliers in Kenya and lock stock availability	Supply Chain Specialist	1	Parallel with Step 1
-3	Get confirmation from Kenya supplier on stock readiness	Supply Chain Specialist	1	Sequential
-4	Get confirmation from Product Management team on product status	Product Mgmt	0.5	Parallel with Step 3
-5	Confirm order to Kenya supplier and request for dispatch	Supply Chain Specialist	0.5	Sequential
-6	Apply permit for foreign currency approval from bank	Finance/Admin	5	Sequential
-7	Make payment for supplier and request dispatch	Accounts	5	Parallel with Step 6
-8	Arrange transportation logistics (truck booking, border prep)	Logistics	1	Sequential after payment
-9	Dispatch from Kenya (Moyale border)	Logistics	2	Final stage
+5. SUPPLIER ORDER CONFIRMATION (0.5 day)
+   - Responsible: Supply Chain Specialist
+   - Activities: Formal order placement, request proforma invoice and final pricing
+   - Deliverable: Supplier order confirmation
 
-⏱️ Typical Total Cycle: ~10–12 days (some processes run in parallel)
-🔁 Applies automatically to any order, procurement, or partnership-related objective.
+6. FOREIGN CURRENCY PERMIT APPLICATION (5 days)
+   - Responsible: Tax Accounting and Admin
+   - Activities: Apply for foreign currency approval from appropriate bank, obtain permit
+   - Deliverable: Bank permit for foreign currency
 
-🧩 TASK
-Transform any provided objective into an executable action plan, ensuring it meets strategic quality standards and fits into the LeanChems Order-to-Delivery Process Framework.
+7. SUPPLIER PAYMENT PROCESSING (5 days)
+   - Responsible: Commercial and Finance Specialist
+   - Activities: Process payment to supplier, request export documentation initiation
+   - Deliverable: Payment confirmation and supplier acknowledgment
+
+8. TRANSPORTATION LOGISTICS ARRANGEMENT (1 day)
+   - Responsible: Kenya Operation Specialist
+   - Activities: Identify appropriate truck, coordinate with supplier for export documentation
+   - Deliverable: Transport arrangement confirmation
+
+9. KENYA SIDE DISPATCH & CLEARANCE (2 days)
+   - Responsible: Kenya Operation Specialist
+   - Activities: Coordinate product dispatch from Kenya Moyale side, complete Kenyan customs clearance
+   - Deliverable: Kenya border clearance documents
+
+10. ETHIOPIAN CUSTOMS CLEARANCE (2 days)
+    - Responsible: Ethiopian Operation Specialist
+    - Activities: Handle Ethiopian customs clearance, process 1st payment based on permit value
+    - Deliverable: Ethiopian customs clearance certificate
+
+11. TAX REASSESSMENT & FINAL PAYMENT (0.5 day)
+    - Responsible: Tax Accounting and Admin
+    - Activities: Complete tax reassessment, process 2nd tax payment
+    - Deliverable: Final tax payment confirmation
+
+12. PRODUCT LOADING & DISPATCH (0.5 day)
+    - Responsible: Ethiopian Operation Specialist
+    - Activities: Supervise product loading, coordinate dispatch to final destination
+    - Deliverable: Dispatch confirmation
+
+13. TRANSPORT MONITORING (2 days)
+    - Responsible: Ethiopian Operation Specialist
+    - Activities: Track truck movement, coordinate with transport provider
+    - Deliverable: Regular transport status updates
+
+14. FINAL DELIVERY & WAREHOUSE HANDOVER (1 day)
+    - Responsible: Tax Accounting and Admin
+    - Activities: Coordinate final delivery to customer warehouse, complete handover
+    - Deliverable: Customer delivery confirmation and signed receipt
+
+15. POST-DELIVERY DOCUMENTATION & SETTLEMENT (1 day)
+    - Responsible: Commercial and Finance Specialist
+    - Activities: Complete all financial settlements, document archiving, lesson learned
+    - Deliverable: Closed order file and settlement confirmation
+
+⏱️ Total Process Duration: ~15-18 days (with parallel execution)
+🔁 MANDATORY for all delivery, procurement, and partnership execution objectives
+
+AVAILABLE ROLES & RESPONSIBILITIES:
+- Account Executive: Deal finalization, client communication, agreement management
+- Supply Chain Specialist: Supplier coordination, stock management, order placement
+- Commercial and Finance Specialist: Payment processing, financial documentation, settlements
+- Tax Accounting and Admin: Bank permits, tax payments, compliance, final delivery coordination
+- Kenya Operation Specialist: Kenya-side logistics, transport arrangement, Kenya border clearance
+- Ethiopian Operation Specialist: Ethiopia-side logistics, customs clearance, transport monitoring
+- Product Management Team: Product specification validation, quality assurance
+
+🧩 TASK GENERATION INSTRUCTION
+Generate EXACTLY 10-15 tasks that comprehensively cover the Order-to-Delivery process.
+
+For delivery-related objectives: Follow the 15-step process EXACTLY as defined above
+For non-delivery objectives: Adapt the framework while maintaining the role responsibilities
 
 ✅ VALIDATION FRAMEWORK (80% Compliance Required)
 Each objective must be evaluated against these 5 criteria (must pass at least 4/5):
 
-Clarity & Specificity Check
-
-Can someone unfamiliar with the context understand exactly what success means?
-
-Is the scope clearly defined (product, market, partner, etc.)?
-
-Measurability & Verification Check
-
-Is there a quantifiable metric and target value?
-
-Is the evidence source for completion identifiable?
-
-Relevance & Alignment Check
-
-Does this directly advance LeanChems’ 2025 Brenntag partnership goal?
-
-Does it align with “Value You Deserve” (Dry Mix) or “Chemical You Trust” (Paint) positioning?
-
-Actionability & Ownership Check
-
-Can it be broken into sequential tasks using the Order-to-Delivery Process Framework?
-
-Is it clear who would lead each process step?
-
-Time-Bound Check
-
-Is there a specific deadline within Q4 2025?
-
-Are progress checkpoints implied or stated?
+1. Clarity & Specificity: Clear scope, product, and success definition
+2. Measurability & Verification: Quantifiable metrics and verifiable completion
+3. Relevance & Alignment: Advances Brenntag partnership or core business pillars
+4. Actionability & Ownership: Can be executed using defined roles and process
+5. Time-Bound: Specific Q4 2025 deadline with progress checkpoints
 
 🧭 INSTRUCTION FLOW
-Step 1 – Objective Analysis:
-Analyze the provided objective against the 5 criteria above. Identify which criteria are met and which need refinement. Ensure minimum 4/5 criteria pass (80% compliance).
+Step 1 – Process Mapping: Map the objective to the 15-step Order-to-Delivery framework
+Step 2 – Role Assignment: Assign each task to appropriate roles from available positions
+Step 3 – Timeline Alignment: Set realistic due dates within Q4 2025 context
+Step 4 – Strategic Enhancement: Add strategic context and success criteria
+Step 5 – Bottleneck Identification: Highlight potential risks and mitigation strategies
 
-Step 2 – Strategic Alignment Verification:
-Confirm the objective advances LeanChems' Brenntag partnership or strengthens “Value You Deserve” or “Chemical You Trust” pillars.
+OBJECTIVE TO ANALYZE:
+GOAL: {goal_data['title']}
+DESCRIPTION: {goal_data.get('description', '')}
+OUTPUT: {goal_data.get('output', '')}
+DEADLINE: {goal_data.get('deadline', 'Q4 2025')}
 
-Step 3 – Objective Refinement (if needed):
-If criteria compliance <80%, refine the objective by adding missing clarity, measurability, or time-bounded elements.
-
-Step 4 – Action Plan Foundation:
-Use the Order-to-Delivery Process Framework to map tasks, durations, and parallel dependencies.
-Identify responsible roles and highlight critical bottlenecks.
-
-Step 5 – Q4 Execution Alignment:
-Map tasks to the Q4 2025 timeline (Oct–Dec) using Ethiopian business context.
-Ensure each step aligns with CEO’s “Sales & Business Development” focus and resource constraints.
-        OBJECTIVE TO ANALYZE:
-        GOAL: {goal_data['title']}
-        DESCRIPTION: {goal_data.get('description', '')}
-        OUTPUT: {goal_data.get('output', '')}
-        DEADLINE: {goal_data.get('deadline', 'Q4 2025')}
-
-        Return ONLY valid JSON in this exact format:
+Return ONLY valid JSON in this exact format:
+{{
+    "strategic_analysis": {{
+        "validation_score": "X/5 criteria met - PASS/NEEDS REFINEMENT",
+        "criteria_analysis": {{
+            "clarity_specificity": "Brief analysis",
+            "measurability_verification": "Brief analysis", 
+            "relevance_alignment": "Brief analysis",
+            "actionability_ownership": "Brief analysis",
+            "time_bound": "Brief analysis"
+        }},
+        "strategic_alignment": "How this advances LeanChems' goals",
+        "refined_objective": "Clear, actionable version if refinement was needed",
+        "q4_execution_context": "Alignment with Q4 2025 timeline and CEO focus",
+        "process_applied": "Order-to-Delivery Standard Framework"
+    }},
+    "tasks": [
         {{
-            "strategic_analysis": {{
-                "validation_score": "X/5 criteria met - PASS/NEEDS REFINEMENT",
-                "criteria_analysis": {{
-                    "clarity_specificity": "Brief analysis",
-                    "measurability_verification": "Brief analysis", 
-                    "relevance_alignment": "Brief analysis",
-                    "actionability_ownership": "Brief analysis",
-                    "time_bound": "Brief analysis"
-                }},
-                "strategic_alignment": "How this advances LeanChems' goals",
-                "refined_objective": "Clear, actionable version if refinement was needed",
-                "q4_execution_context": "Alignment with Q4 2025 timeline and CEO focus"
-            }},
-            "tasks": [
-                {{
-                    "task_description": "Detailed, actionable task description with specific deliverables",
-                    "due_date": "2025-10-15",
-                    "priority": "high/medium/low",
-                    "estimated_hours": 16,
-                    "required_skills": [
-                        "Advanced negotiation and partnership building",
-                        "Chemical product knowledge - Dry Mix/Paint formulations",
-                        "Market analysis and competitor intelligence",
-                        "Financial modeling and ROI calculation",
-                        "Stakeholder management and communication",
-                        "Project management and timeline coordination",
-                        "Technical sales and specification understanding"
-                    ],
-                    "success_criteria": "Specific, measurable success indicators",
-                    "complexity": "low/medium/high",
-                    "strategic_phase": "Phase name (e.g., Partnership Development, Market Validation)",
-                    "key_stakeholders": ["CEO", "Sales Team", "Technical Team", "Partners"],
-                    "potential_bottlenecks": ["Identified risks or challenges"],
-                    "resource_requirements": ["Tools, budget, or support needed"]
-                }}
-            ]
+            "task_description": "Detailed, actionable task description with specific deliverables",
+            "due_date": "2025-10-15",
+            "priority": "high/medium/low",
+            "estimated_hours": 16,
+            "required_skills": [
+                "Advanced negotiation and partnership building",
+                "Chemical product knowledge - Dry Mix/Paint formulations",
+                "Market analysis and competitor intelligence",
+                "Financial modeling and ROI calculation",
+                "Stakeholder management and communication",
+                "Project management and timeline coordination",
+                "Technical sales and specification understanding"
+            ],
+            "success_criteria": "Specific, measurable success indicators",
+            "complexity": "low/medium/high",
+            "strategic_phase": "Phase name (e.g., Partnership Development, Market Validation)",
+            "key_stakeholders": ["CEO", "Sales Team", "Technical Team", "Partners"],
+            "potential_bottlenecks": ["Identified risks or challenges"],
+            "resource_requirements": ["Tools, budget, or support needed"],
+            "assigned_role": "Specific role from available positions"
         }}
+    ]
+}}
 
-        Generate 3-5 elaborated tasks with comprehensive required skills and strategic context.
-        """
+Generate EXACTLY 10-15 tasks that comprehensively cover the entire delivery process.
+"""
 
-        print(f"🤖 Sending strategic prompt to AI: {prompt[:200]}...")  # Debug
+        print(f"🤖 Sending strategic prompt to AI: {prompt[:200]}...")
         
         if ai_meta_id:
             update_ai_progress(ai_meta_id, 40, "Strategic Analysis", "Validating objective against framework")
         
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "Return ONLY valid JSON. You are a strategic planner for LeanChems Ethiopia."}, {"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": "Return ONLY valid JSON. You are a strategic planner for LeanChems Ethiopia."},
+                {"role": "user", "content": prompt}
+            ],
             temperature=0.2,
-            max_tokens=2000,
-            timeout=20
+            max_tokens=3000,
+            timeout=25
         )
         task_time = time.time() - start_time
         response_text = response.choices[0].message.content.strip()
         
-        print(f"🤖 AI Strategic Response: {response_text[:200]}...")  # Debug
+        print(f"🤖 AI Strategic Response: {response_text[:200]}...")
         
         ai_analysis = safe_json_parse(response_text, {})
         if not ai_analysis:
@@ -1015,7 +1048,9 @@ Ensure each step aligns with CEO’s “Sales & Business Development” focus an
         
         supabase = get_supabase_client()
         created_tasks = []
-        for task_data in ai_tasks_data[:5]:
+        
+        # Process up to 15 tasks
+        for task_data in ai_tasks_data[:15]:
             if not task_data.get('task_description'):
                 continue
             
@@ -1030,7 +1065,9 @@ Ensure each step aligns with CEO’s “Sales & Business Development” focus an
                 "potential_bottlenecks": task_data.get('potential_bottlenecks', []),
                 "resource_requirements": task_data.get('resource_requirements', []),
                 "validation_score": strategic_analysis.get('validation_score', ''),
-                "q4_execution_context": strategic_analysis.get('q4_execution_context', '')
+                "q4_execution_context": strategic_analysis.get('q4_execution_context', ''),
+                "assigned_role": task_data.get('assigned_role', ''),
+                "process_step": strategic_analysis.get('process_applied', '')
             }
             
             task_record = {
@@ -1045,6 +1082,7 @@ Ensure each step aligns with CEO’s “Sales & Business Development” focus an
                 "ai_suggested": True,
                 "strategic_metadata": strategic_metadata
             }
+            
             task_result = supabase.table("action_plans").insert(task_record).execute()
             if task_result.data:
                 created_tasks.append(task_result.data[0])
@@ -1062,7 +1100,8 @@ Ensure each step aligns with CEO’s “Sales & Business Development” focus an
                     "goal_output": goal_data.get('output', ''),
                     "goal_deadline": goal_data.get('deadline', 'Q4 2025'),
                     "processing_time": task_time,
-                    "strategic_framework_applied": True
+                    "strategic_framework_applied": True,
+                    "process_type": "order_to_delivery_kenya_ethiopia"
                 },
                 "output_json": {
                     "status": "strategic_classification_completed",
@@ -1072,7 +1111,8 @@ Ensure each step aligns with CEO’s “Sales & Business Development” focus an
                     "tasks": ai_tasks_data,
                     "validation_score": strategic_analysis.get('validation_score', ''),
                     "processing_time": task_time,
-                    "q4_alignment": strategic_analysis.get('q4_execution_context', '')
+                    "q4_alignment": strategic_analysis.get('q4_execution_context', ''),
+                    "process_applied": strategic_analysis.get('process_applied', '')
                 },
                 "raw_response": response_text,
                 "confidence": 0.90,
@@ -1080,15 +1120,15 @@ Ensure each step aligns with CEO’s “Sales & Business Development” focus an
             }).eq("id", ai_meta_id).execute()
         
         return created_tasks, f"Created {len(created_tasks)} strategic tasks in {task_time:.1f}s", task_time
+        
     except TimeoutError:
-        log_ai_error("task_classification", "Timeout after 20 seconds", ai_meta_id, goal['id'])
+        log_ai_error("task_classification", "Timeout after 25 seconds", ai_meta_id, goal['id'])
         tasks, message = fallback_task_classification(goal_data)
         return tasks, message, time.time() - start_time
     except Exception as e:
         log_ai_error("task_classification", str(e), ai_meta_id, goal['id'])
         tasks, message = fallback_task_classification(goal_data)
-        return tasks, message, time.time() - start_time   
-
+        return tasks, message, time.time() - start_time
     
 @task_bp.route('/api/tasks/goals/classify-only', methods=['POST'])
 @token_required
