@@ -775,7 +775,7 @@ def generate_employee_recommendations(task_id):
 @token_required
 @admin_required
 def apply_employee_recommendation(task_id):
-    """Apply a specific employee recommendation to a task"""
+    """Apply a specific employee recommendation to a task - UPDATED TO PRESERVE STRATEGIC METADATA"""
     try:
         supabase = get_supabase_client()
         data = request.get_json()
@@ -786,13 +786,22 @@ def apply_employee_recommendation(task_id):
         if not employee_id:
             return jsonify({'success': False, 'error': 'Employee ID is required'}), 400
         
-        # Update task with assigned employee
+        # First get the current task to preserve strategic_metadata
+        current_task_result = supabase.table("action_plans").select("strategic_metadata").eq("id", task_id).execute()
+        current_strategic_meta = {}
+        if current_task_result.data:
+            current_strategic_meta = current_task_result.data[0].get('strategic_metadata', {})
+        
+        # Update task with assigned employee while preserving strategic metadata
         update_data = {
             "assigned_to": employee_id,
             "assigned_to_multiple": [employee_id],
             "status": "not_started",
             "updated_at": datetime.utcnow().isoformat(),
             "strategic_metadata": {
+                # Preserve existing strategic metadata
+                **current_strategic_meta,
+                # Add recommendation application info
                 "ai_recommendation_applied": True,
                 "applied_recommendation": recommendation_data,
                 "applied_at": datetime.utcnow().isoformat()
@@ -821,366 +830,64 @@ def apply_employee_recommendation(task_id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-def classify_goal_to_tasks_only(goal, goal_data, ai_meta_id):
+def update_task_strategic_details(task_id, strategic_analysis):
+    """Update task with strategic details"""
     try:
-        start_time = time.time()
-        if not client:
-            tasks, message = fallback_task_classification(goal_data)
-            return tasks, message, time.time() - start_time
-        
-        # Create the master prompt with strategic framework
-        prompt = f"""
-You are an expert strategic planner for Lean Solution Ethiopia, specifically focused on LeanChems Ethiopia — the Construction and Coating Chemical Distribution business.
-
-🔹 STRATEGIC CONTEXT
-2025 TARGETS:
-- Secure partnership with Brenntag (global chemical distributor)
-- Secure top 20% strong deals in Dry Mix – "Value You Deserve"
-- Confirm 80% product market fit in Paint – "Chemical You Trust"
-- Pre-sale $250K Stock Order (80% priority) + Secure $500K Pipeline (20%)
-- Build strong Construction & Coating product portfolio for 2026
-
-2026 VISION:
-- Active partnership with Brenntag in Chemical Distribution
-- 80% focus on Construction & Coating chemicals, 20% other sectors
-- Foundation for market leadership in Ethiopian chemical distribution
-
-OPERATING PRINCIPLES:
-- "WIG Objectives" focus – Wildly Important Goals that drive 80% of results
-- CEO daily focus includes Sales & Business Development, Partnership securing
-- Resource-constrained environment requiring high-impact prioritization
-
-DEPARTMENT STRUCTURE & JOB DESCRIPTIONS
-
-1. SUPPLY CHAIN DEPARTMENT
-   - Focus: Import/export operations, logistics, and supply chain management
-   - Key Task Keywords: supplier coordination, stock management, order placement, logistics arrangement, customs clearance, border operations, transport coordination, shipment tracking, inventory management, supplier negotiation, export documentation, import documentation, shipping coordination, freight management, cross-border logistics
-   - Typical Responsibilities:
-     * Contact and coordinate with Kenya suppliers for stock availability
-     * Lock inventory and obtain stock confirmations
-     * Manage order placement and supplier communications
-     * Coordinate export documentation from Kenya side
-     * Arrange transportation and logistics
-     * Handle customs clearance processes
-     * Monitor shipment movements cross-border
-     * Manage inventory levels and stock rotations
-
-2. SALES DEPARTMENT  
-   - Focus: Client relationships, marketing, deal finalization, and revenue generation
-   - Key Task Keywords: client communication, deal negotiation, agreement finalization, proforma invoice, commercial terms, customer relationship, sales pipeline, market outreach, client meetings, sales strategy, partnership development, customer acquisition, revenue targets, sales reporting
-   - Typical Responsibilities:
-     * Finalize commercial agreements with clients
-     * Prepare and negotiate Proforma Invoices (PI)
-     * Manage client relationships and communications
-     * Develop sales strategies and outreach plans
-     * Secure partnerships and distribution agreements
-     * Achieve revenue targets and sales objectives
-     * Coordinate with marketing for client acquisition
-
-3. PRODUCT DEVELOPMENT DEPARTMENT
-   - Focus: Product validation, quality assurance, and technical specifications
-   - Key Task Keywords: product validation, quality testing, specification approval, technical assessment, product acceptance, quality standards, product testing, formulation review, material acceptance, technical specifications, quality control, product certification, compliance verification
-   - Typical Responsibilities:
-     * Validate imported product specifications and quality
-     * Test and approve raw materials and finished products
-     * Ensure products meet Ethiopian quality standards
-     * Provide technical approval for product acceptance
-     * Develop product specifications and requirements
-     * Conduct quality control checks and testing
-     * Verify product compliance with regulations
-
-4. FINANCE & ADMIN DEPARTMENT
-   - Focus: Financial transactions, compliance, tax, and administrative operations
-   - Key Task Keywords: payment processing, bank permits, tax payments, financial documentation, foreign currency, bank coordination, tax assessment, financial settlement, compliance, administrative tasks, fund transfer, accounting, financial reporting, budget management, audit preparation
-   - Typical Responsibilities:
-     * Process supplier payments and financial transactions
-     * Apply for foreign currency permits from banks
-     * Handle tax payments and reassessments
-     * Manage financial documentation and settlements
-     * Coordinate with banks for permits and transfers
-     * Ensure compliance with financial regulations
-     * Handle administrative and operational finances
-
-⚙️ STANDARD ORDER-TO-DELIVERY PROCESS FRAMEWORK (Kenya to Ethiopia)
-This is the mandatory process template for ALL delivery-related objectives:
-
-1. FINALIZE DEAL DOCUMENTATION (1 day)
-   - Responsible: Account Executive
-   - Activities: Complete agreement, Proforma Invoice (PI), and other commercial terms
-   - Deliverable: Signed PI and commercial agreement
-
-2. SUPPLIER STOCK LOCKING (1 day)  
-   - Responsible: Supply Chain Specialist
-   - Activities: Contact Kenya suppliers, verify stock availability, reserve inventory
-   - Deliverable: Stock confirmation with supplier commitment
-
-3. SUPPLIER STOCK CONFIRMATION (1 day)
-   - Responsible: Supply Chain Specialist
-   - Activities: Obtain written confirmation of stock availability and product specifications
-   - Deliverable: Formal stock confirmation document
-
-4. PRODUCT MANAGEMENT APPROVAL (0.5 day)
-   - Responsible: Product Management Team
-   - Activities: Validate product specifications meet quality standards
-   - Deliverable: Product acceptance confirmation
-
-5. SUPPLIER ORDER CONFIRMATION (0.5 day)
-   - Responsible: Supply Chain Specialist
-   - Activities: Formal order placement, request proforma invoice and final pricing
-   - Deliverable: Supplier order confirmation
-
-6. FOREIGN CURRENCY PERMIT APPLICATION (5 days)
-   - Responsible: Tax Accounting and Admin
-   - Activities: Apply for foreign currency approval from appropriate bank, obtain permit
-   - Deliverable: Bank permit for foreign currency
-
-7. SUPPLIER PAYMENT PROCESSING (5 days)
-   - Responsible: Commercial and Finance Specialist
-   - Activities: Process payment to supplier, request export documentation initiation
-   - Deliverable: Payment confirmation and supplier acknowledgment
-
-8. TRANSPORTATION LOGISTICS ARRANGEMENT (1 day)
-   - Responsible: Kenya Operation Specialist
-   - Activities: Identify appropriate truck, coordinate with supplier for export documentation
-   - Deliverable: Transport arrangement confirmation
-
-9. KENYA SIDE DISPATCH & CLEARANCE (2 days)
-   - Responsible: Kenya Operation Specialist
-   - Activities: Coordinate product dispatch from Kenya Moyale side, complete Kenyan customs clearance
-   - Deliverable: Kenya border clearance documents
-
-10. ETHIOPIAN CUSTOMS CLEARANCE (2 days)
-    - Responsible: Ethiopian Operation Specialist
-    - Activities: Handle Ethiopian customs clearance, process 1st payment based on permit value
-    - Deliverable: Ethiopian customs clearance certificate
-
-11. TAX REASSESSMENT & FINAL PAYMENT (0.5 day)
-    - Responsible: Tax Accounting and Admin
-    - Activities: Complete tax reassessment, process 2nd tax payment
-    - Deliverable: Final tax payment confirmation
-
-12. PRODUCT LOADING & DISPATCH (0.5 day)
-    - Responsible: Ethiopian Operation Specialist
-    - Activities: Supervise product loading, coordinate dispatch to final destination
-    - Deliverable: Dispatch confirmation
-
-13. TRANSPORT MONITORING (2 days)
-    - Responsible: Ethiopian Operation Specialist
-    - Activities: Track truck movement, coordinate with transport provider
-    - Deliverable: Regular transport status updates
-
-14. FINAL DELIVERY & WAREHOUSE HANDOVER (1 day)
-    - Responsible: Tax Accounting and Admin
-    - Activities: Coordinate final delivery to customer warehouse, complete handover
-    - Deliverable: Customer delivery confirmation and signed receipt
-
-15. POST-DELIVERY DOCUMENTATION & SETTLEMENT (1 day)
-    - Responsible: Commercial and Finance Specialist
-    - Activities: Complete all financial settlements, document archiving, lesson learned
-    - Deliverable: Closed order file and settlement confirmation
-
-⏱️ Total Process Duration: ~15-18 days (with parallel execution)
-🔁 MANDATORY for all delivery, procurement, and partnership execution objectives
-
-AVAILABLE ROLES & RESPONSIBILITIES:
-- Account Executive: Deal finalization, client communication, agreement management
-- Supply Chain Specialist: Supplier coordination, stock management, order placement
-- Commercial and Finance Specialist: Payment processing, financial documentation, settlements
-- Tax Accounting and Admin: Bank permits, tax payments, compliance, final delivery coordination
-- Kenya Operation Specialist: Kenya-side logistics, transport arrangement, Kenya border clearance
-- Ethiopian Operation Specialist: Ethiopia-side logistics, customs clearance, transport monitoring
-- Product Management Team: Product specification validation, quality assurance
-
-🧩 TASK GENERATION INSTRUCTION
-Generate EXACTLY 10-15 tasks that comprehensively cover the Order-to-Delivery process.
-
-For delivery-related objectives: Follow the 15-step process EXACTLY as defined above
-For non-delivery objectives: Adapt the framework while maintaining the role responsibilities
-
-✅ VALIDATION FRAMEWORK (80% Compliance Required)
-Each objective must be evaluated against these 5 criteria (must pass at least 4/5):
-
-1. Clarity & Specificity: Clear scope, product, and success definition
-2. Measurability & Verification: Quantifiable metrics and verifiable completion
-3. Relevance & Alignment: Advances Brenntag partnership or core business pillars
-4. Actionability & Ownership: Can be executed using defined roles and process
-5. Time-Bound: Specific Q4 2025 deadline with progress checkpoints
-
-🧭 INSTRUCTION FLOW
-Step 1 – Process Mapping: Map the objective to the 15-step Order-to-Delivery framework
-Step 2 – Role Assignment: Assign each task to appropriate roles from available positions
-Step 3 – Timeline Alignment: Set realistic due dates within Q4 2025 context
-Step 4 – Strategic Enhancement: Add strategic context and success criteria
-Step 5 – Bottleneck Identification: Highlight potential risks and mitigation strategies
-
-OBJECTIVE TO ANALYZE:
-GOAL: {goal_data['title']}
-DESCRIPTION: {goal_data.get('description', '')}
-OUTPUT: {goal_data.get('output', '')}
-DEADLINE: {goal_data.get('deadline', 'Q4 2025')}
-
-Return ONLY valid JSON in this exact format:
-{{
-    "strategic_analysis": {{
-        "validation_score": "X/5 criteria met - PASS/NEEDS REFINEMENT",
-        "criteria_analysis": {{
-            "clarity_specificity": "Brief analysis",
-            "measurability_verification": "Brief analysis", 
-            "relevance_alignment": "Brief analysis",
-            "actionability_ownership": "Brief analysis",
-            "time_bound": "Brief analysis"
-        }},
-        "strategic_alignment": "How this advances LeanChems' goals",
-        "refined_objective": "Clear, actionable version if refinement was needed",
-        "q4_execution_context": "Alignment with Q4 2025 timeline and CEO focus",
-        "process_applied": "Order-to-Delivery Standard Framework"
-    }},
-    "tasks": [
-        {{
-            "task_description": "Detailed, actionable task description with specific deliverables",
-            "due_date": "2025-10-15",
-            "priority": "high/medium/low",
-            "estimated_hours": 16,
-            "required_skills": [
-                "Advanced negotiation and partnership building",
-                "Chemical product knowledge - Dry Mix/Paint formulations",
-                "Market analysis and competitor intelligence",
-                "Financial modeling and ROI calculation",
-                "Stakeholder management and communication",
-                "Project management and timeline coordination",
-                "Technical sales and specification understanding"
-            ],
-            "success_criteria": "Specific, measurable success indicators",
-            "complexity": "low/medium/high",
-            "strategic_phase": "Phase name (e.g., Partnership Development, Market Validation)",
-            "key_stakeholders": ["CEO", "Sales Team", "Technical Team", "Partners"],
-            "potential_bottlenecks": ["Identified risks or challenges"],
-            "resource_requirements": ["Tools, budget, or support needed"],
-            "assigned_role": "Specific role from available positions"
-        }}
-    ]
-}}
-
-Generate EXACTLY 10-15 tasks that comprehensively cover the entire delivery process.
-"""
-
-        print(f"🤖 Sending strategic prompt to AI: {prompt[:200]}...")
-        
-        if ai_meta_id:
-            update_ai_progress(ai_meta_id, 40, "Strategic Analysis", "Validating objective against framework")
-        
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Return ONLY valid JSON. You are a strategic planner for LeanChems Ethiopia."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2,
-            max_tokens=3000,
-            timeout=25
-        )
-        task_time = time.time() - start_time
-        response_text = response.choices[0].message.content.strip()
-        
-        print(f"🤖 AI Strategic Response: {response_text[:200]}...")
-        
-        ai_analysis = safe_json_parse(response_text, {})
-        if not ai_analysis:
-            log_ai_error("task_classification", "Invalid JSON response", ai_meta_id, goal['id'], prompt, response_text)
-            tasks, message = fallback_task_classification(goal_data)
-            return tasks, message, task_time
-        
-        strategic_analysis = ai_analysis.get('strategic_analysis', {})
-        ai_tasks_data = ai_analysis.get('tasks', [])
-        if not ai_tasks_data:
-            log_ai_error("task_classification", "No tasks generated", ai_meta_id, goal['id'], prompt, response_text)
-            tasks, message = fallback_task_classification(goal_data)
-            return tasks, message, task_time
-        
         supabase = get_supabase_client()
-        created_tasks = []
         
-        # Process up to 15 tasks
-        for task_data in ai_tasks_data[:15]:
-            if not task_data.get('task_description'):
-                continue
-            
-            # Enhanced strategic metadata with comprehensive analysis
-            strategic_metadata = {
-                "required_skills": task_data.get('required_skills', []),
-                "success_criteria": task_data.get('success_criteria', ''),
-                "complexity": task_data.get('complexity', 'medium'),
-                "strategic_analysis": strategic_analysis,
-                "strategic_phase": task_data.get('strategic_phase', ''),
-                "key_stakeholders": task_data.get('key_stakeholders', []),
-                "potential_bottlenecks": task_data.get('potential_bottlenecks', []),
-                "resource_requirements": task_data.get('resource_requirements', []),
-                "validation_score": strategic_analysis.get('validation_score', ''),
-                "q4_execution_context": strategic_analysis.get('q4_execution_context', ''),
-                "assigned_role": task_data.get('assigned_role', ''),
-                "process_step": strategic_analysis.get('process_applied', '')
-            }
-            
-            task_record = {
-                "task_description": task_data['task_description'],
-                "objective_id": goal['id'],
-                "due_date": task_data.get('due_date'),
-                "priority": task_data.get('priority', 'medium'),
-                "estimated_hours": task_data.get('estimated_hours', 8),
-                "status": "ai_suggested",
-                "completion_percentage": 0,
-                "ai_meta_id": ai_meta_id,
-                "ai_suggested": True,
-                "strategic_metadata": strategic_metadata
-            }
-            
-            task_result = supabase.table("action_plans").insert(task_record).execute()
-            if task_result.data:
-                created_tasks.append(task_result.data[0])
+        strategic_metadata = {
+            "context": strategic_analysis.get('context', ''),
+            "objective": strategic_analysis.get('objective', ''),
+            "process": strategic_analysis.get('process', ''),
+            "delivery": strategic_analysis.get('delivery', ''),
+            "reporting_requirements": strategic_analysis.get('reporting_requirements', ''),
+            # Include other existing strategic metadata
+            "required_skills": strategic_analysis.get('required_skills', []),
+            "success_criteria": strategic_analysis.get('success_criteria', ''),
+            "complexity": strategic_analysis.get('complexity', 'medium')
+        }
         
-        # Update AI meta record with enhanced strategic data
-        if ai_meta_id:
-            supabase.table("ai_meta").update({
-                "source": "chatgpt-strategic-classification",
-                "model": "gpt-3.5-turbo",
-                "prompt": prompt,
-                "input_json": {
-                    "goal_id": goal['id'],
-                    "goal_title": goal_data['title'],
-                    "goal_description": goal_data.get('description', ''),
-                    "goal_output": goal_data.get('output', ''),
-                    "goal_deadline": goal_data.get('deadline', 'Q4 2025'),
-                    "processing_time": task_time,
-                    "strategic_framework_applied": True,
-                    "process_type": "order_to_delivery_kenya_ethiopia"
-                },
-                "output_json": {
-                    "status": "strategic_classification_completed",
-                    "tasks_generated": len(created_tasks),
-                    "goal_id": goal['id'],
-                    "strategic_analysis": strategic_analysis,
-                    "tasks": ai_tasks_data,
-                    "validation_score": strategic_analysis.get('validation_score', ''),
-                    "processing_time": task_time,
-                    "q4_alignment": strategic_analysis.get('q4_execution_context', ''),
-                    "process_applied": strategic_analysis.get('process_applied', '')
-                },
-                "raw_response": response_text,
-                "confidence": 0.90,
-                "updated_at": datetime.utcnow().isoformat()
-            }).eq("id", ai_meta_id).execute()
+        update_data = {
+            "strategic_metadata": strategic_metadata,
+            "updated_at": datetime.utcnow().isoformat()
+        }
         
-        return created_tasks, f"Created {len(created_tasks)} strategic tasks in {task_time:.1f}s", task_time
+        result = supabase.table("action_plans").update(update_data).eq("id", task_id).execute()
+        return result.data[0] if result.data else None
         
-    except TimeoutError:
-        log_ai_error("task_classification", "Timeout after 25 seconds", ai_meta_id, goal['id'])
-        tasks, message = fallback_task_classification(goal_data)
-        return tasks, message, time.time() - start_time
     except Exception as e:
-        log_ai_error("task_classification", str(e), ai_meta_id, goal['id'])
-        tasks, message = fallback_task_classification(goal_data)
-        return tasks, message, time.time() - start_time
-    
+        print(f"❌ Error updating task strategic details: {e}")
+        return None
+ 
+# ========== UPDATED STANDARD ORDER-TO-DELIVERY PROCESS ==========
+def get_next_objective_number():
+    """Get the next objective number by finding the highest pre_number and incrementing"""
+    try:
+        supabase = get_supabase_client()
+        
+        # Get the highest pre_number from objectives
+        result = supabase.table("objectives").select("pre_number").order("pre_number", desc=True).limit(1).execute()
+        
+        if result.data and result.data[0].get('pre_number'):
+            highest_number = result.data[0]['pre_number']
+            # Extract number from format like "OBJ-001" or just use the number
+            if isinstance(highest_number, str) and highest_number.startswith('OBJ-'):
+                try:
+                    current_num = int(highest_number.split('-')[1])
+                    return f"OBJ-{current_num + 1:03d}"
+                except:
+                    return f"OBJ-001"
+            else:
+                # If it's already a number, increment it
+                return highest_number + 1
+        else:
+            # First objective
+            return "OBJ-001"
+            
+    except Exception as e:
+        print(f"❌ Error getting next objective number: {e}")
+        return "OBJ-001"
+
 @task_bp.route('/api/tasks/goals/classify-only', methods=['POST'])
 @token_required
 def create_goal_classify_only():
@@ -1189,6 +896,9 @@ def create_goal_classify_only():
         data = request.get_json()
         if not data.get('title'):
             return jsonify({'success': False, 'error': 'Goal title required'}), 400
+        
+        # 🎯 AUTO-GENERATE OBJECTIVE NUMBER
+        next_objective_number = get_next_objective_number()
         
         goal_data = {
             "title": data['title'].strip(),
@@ -1199,7 +909,8 @@ def create_goal_classify_only():
             "priority": data.get('priority', 'medium'),
             "status": "draft",
             "created_by": safe_get_employee_id(),
-            "assignee_mode": "manual"
+            "assignee_mode": "manual",
+            "pre_number": next_objective_number  # 🎯 ADD AUTO-GENERATED NUMBER
         }
         goal_data = {k: v for k, v in goal_data.items() if v is not None and v != ''}
         
@@ -1222,12 +933,14 @@ def create_goal_classify_only():
                     "goal_description": data.get('description', ''),
                     "goal_output": data.get('output', ''),
                     "goal_deadline": data.get('deadline'),
+                    "objective_number": next_objective_number,  # 🎯 INCLUDE NUMBER
                     "status": "starting"
                 },
                 "output_json": {
                     "status": "starting", 
                     "progress": 0, 
-                    "goal_id": goal['id']
+                    "goal_id": goal['id'],
+                    "objective_number": next_objective_number  # 🎯 INCLUDE NUMBER
                 },
                 "confidence": None,
                 "created_at": datetime.utcnow().isoformat()
@@ -1248,11 +961,804 @@ def create_goal_classify_only():
             'ai_breakdown': ai_breakdown,
             'ai_processing_time': ai_processing_time,
             'ai_meta_id': ai_meta_id,
-            'message': 'Goal created with task classification'
+            'message': f'Goal {next_objective_number} created with task classification'  # 🎯 SHOW NUMBER
         })
     except Exception as e:
         print(f"❌ Error creating goal: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+    
+def get_updated_standard_process():
+    """Return the updated standard process framework"""
+    return {
+        "1. FINALIZE DEAL DOCUMENTATION (1 day)": {
+            "responsible": "Account Executive",
+            "activities": "Complete agreement, Proforma Invoice (PI), and other commercial terms",
+            "deliverable": "Signed PI and commercial agreement"
+        },
+        "2. SUPPLIER STOCK ORDER CONFIRMATION (1 day)": {
+            "responsible": "Supply Chain Specialist", 
+            "activities": "Contact Kenya suppliers, verify stock availability, reserve inventory, obtain written confirmation, formal order placement, request proforma invoice and final pricing",
+            "deliverable": "Supplier order confirmation"
+        },
+        "3. PRODUCT MANAGEMENT APPROVAL (0.5 day)": {
+            "responsible": "Product Development Manager",
+            "activities": "Validate product specifications meet quality standards",
+            "deliverable": "Product acceptance confirmation"
+        },
+        "4. FOREIGN CURRENCY PERMIT APPLICATION (5 days)": {
+            "responsible": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+            "activities": "Apply for foreign currency approval from appropriate bank, obtain permit",
+            "deliverable": "Bank permit for foreign currency"
+        },
+        "5. SUPPLIER PAYMENT PROCESSING (5 days)": {
+            "responsible": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+            "activities": "Process payment to supplier, request export documentation initiation",
+            "deliverable": "Payment confirmation and supplier acknowledgment"
+        },
+        "6. TRANSPORTATION LOGISTICS ARRANGEMENT (1 day)": {
+            "responsible": "Kenyan operation specialist", 
+            "activities": "Identify appropriate truck, coordinate with supplier for export documentation",
+            "deliverable": "Transport arrangement confirmation and supplier export documentation"
+        },
+        "7. KENYA SIDE DISPATCH & CLEARANCE (2 days)": {
+            "responsible": "Kenyan operation specialist",
+            "activities": "Coordinate product dispatch from Kenya Moyale side, complete Kenyan customs clearance",
+            "deliverable": "Kenya border clearance documents"
+        },
+        "8. ETHIOPIAN CUSTOMS CLEARANCE (2 days)": {
+            "responsible": "Ethiopian Operation Specialist",
+            "activities": "Handle Ethiopian customs clearance, process 1st payment based on permit value",
+            "deliverable": "Ethiopian customs clearance certificate"
+        },
+        "9. TAX REASSESSMENT & FINAL PAYMENT (0.5 day)": {
+            "responsible": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+            "activities": "Complete tax reassessment, process 2nd tax payment",
+            "deliverable": "Final tax payment confirmation"
+        },
+        "10. PRODUCT LOADING & DISPATCH (0.5 day)": {
+            "responsible": "Ethiopian Operation Specialist",
+            "activities": "Supervise product loading, coordinate dispatch to final destination", 
+            "deliverable": "Dispatch confirmation"
+        },
+        "11. TRANSPORT MONITORING (2 days)": {
+            "responsible": "Ethiopian Operation Specialist",
+            "activities": "Track truck movement, coordinate with transport provider",
+            "deliverable": "Regular transport status updates"
+        },
+        "12. FINAL DELIVERY & WAREHOUSE HANDOVER (1 day)": {
+            "responsible": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+            "activities": "Coordinate final delivery to customer warehouse, complete handover",
+            "deliverable": "Customer delivery confirmation and signed receipt"
+        },
+        "13. POST-DELIVERY DOCUMENTATION & SETTLEMENT (1 day)": {
+            "responsible": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+            "activities": "Complete all financial settlements, document archiving, lesson learned",
+            "deliverable": "Closed order file and settlement confirmation"
+        }
+    }
+
+def get_kickoff_information_requirements():
+    """Return the information required to start the order-to-delivery process"""
+    return {
+        "CLIENT INFORMATION": [
+            "Client company name and contact details",
+            "Authorized signatory information", 
+            "Delivery address and warehouse details",
+            "Contact person for delivery coordination"
+        ],
+        "COMMERCIAL DOCUMENTS": [
+            "Finalized commercial agreement",
+            "Signed Proforma Invoice (PI)",
+            "Payment terms and conditions",
+            "Incoterms agreement",
+            "Credit terms (if applicable)"
+        ],
+        "PRODUCT SPECIFICATIONS": [
+            "Product name and description",
+            "Technical specifications and standards",
+            "Quantity required",
+            "Brand and manufacturer details", 
+            "Quality requirements and certifications",
+            "Packaging specifications"
+        ],
+        "SUPPLIER INFORMATION": [
+            "Kenya supplier contact details",
+            "Supplier product availability confirmation",
+            "Supplier pricing and terms",
+            "Supplier lead time commitments"
+        ],
+        "LOGISTICS REQUIREMENTS": [
+            "Preferred transport mode",
+            "Special handling requirements",
+            "Insurance requirements",
+            "Delivery timeline expectations"
+        ],
+        "FINANCIAL REQUIREMENTS": [
+            "Total order value",
+            "Currency requirements", 
+            "Payment schedule",
+            "Bank details for transfers",
+            "Tax and duty considerations"
+        ],
+        "REGULATORY REQUIREMENTS": [
+            "Import license details",
+            "Product certification requirements",
+            "Customs clearance prerequisites",
+            "Any special permits needed"
+        ]
+    }
+
+def generate_13_step_delivery_tasks(goal, goal_data, ai_meta_id):
+    """Generate exactly 13 tasks using the predefined delivery process"""
+    start_time = time.time()
+    
+    try:
+        # Get the predefined standard process
+        standard_process = get_updated_standard_process()
+        
+        # 🎯 GET OBJECTIVE NUMBER FROM GOAL
+        objective_number = goal.get('pre_number', 'N/A')
+        
+        # Create prompt specifically for delivery goals - INCLUDING OBJECTIVE NUMBER
+        prompt = f"""
+You are generating tasks for a DELIVERY/PROCUREMENT goal. Use the EXACT 13-step Order-to-Delivery process.
+
+OBJECTIVE: {objective_number} - {goal_data['title']}
+DESCRIPTION: {goal_data.get('description', '')}
+OUTPUT: {goal_data.get('output', '')}
+
+STANDARD 13-STEP PROCESS:
+{json.dumps(standard_process, indent=2)}
+
+Generate EXACTLY 13 tasks following this process exactly. For each task:
+1. Use the EXACT process step title as task_description
+2. Include due_date within Q4 2025
+3. Use appropriate priority (high/medium/low)
+4. Set estimated_hours between 4-16 hours
+5. Include assigned_role from the standard process
+6. Reference objective {objective_number} in strategic context
+
+Return ONLY valid JSON with exactly 13 tasks in this format:
+{{
+    "tasks": [
+        {{
+            "task_description": "1. FINALIZE DEAL DOCUMENTATION (1 day): Complete agreement, Proforma Invoice (PI), and other commercial terms",
+            "due_date": "2025-11-05",
+            "priority": "high",
+            "estimated_hours": 8,
+            "assigned_role": "Account Executive",
+            "strategic_context": "Executing step 1 for objective {objective_number}"
+        }},
+        ... // 12 more tasks
+    ]
+}}
+"""
+        
+        print(f"🤖 Generating 13-step delivery tasks for {objective_number}: {goal_data['title'][:50]}...")
+        
+        if ai_meta_id:
+            update_ai_progress(ai_meta_id, 40, "13-Step Delivery Process", f"Applying standard delivery framework for {objective_number}")
+        
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Return ONLY valid JSON. Generate exactly 13 tasks using the 13-step delivery process."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1,
+            max_tokens=3000,
+            timeout=30
+        )
+        
+        task_time = time.time() - start_time
+        response_text = response.choices[0].message.content.strip()
+        
+        print(f"🤖 AI Response: {response_text[:500]}...")
+        
+        # Parse the AI response
+        ai_analysis = safe_json_parse(response_text, {})
+        if not ai_analysis:
+            print("❌ Failed to parse AI response as JSON")
+            raise Exception("Invalid JSON response from AI")
+        
+        ai_tasks_data = ai_analysis.get('tasks', [])
+        
+        # CRITICAL: Validate we have exactly 13 tasks
+        if len(ai_tasks_data) != 13:
+            print(f"⚠️ AI returned {len(ai_tasks_data)} tasks, generating 13-step fallback")
+            return generate_13_step_fallback_tasks(goal, goal_data, standard_process, ai_meta_id)
+        
+        # Process and save tasks - PASS OBJECTIVE NUMBER
+        return process_and_save_tasks(goal, ai_tasks_data, standard_process, ai_meta_id, task_time, "13-step_delivery")
+        
+    except Exception as e:
+        print(f"❌ Error in 13-step delivery generation: {e}")
+        # Fallback to predefined 13-step process
+        return generate_13_step_fallback_tasks(goal, goal_data, get_updated_standard_process(), ai_meta_id)
+    
+def classify_goal_to_tasks_only(goal, goal_data, ai_meta_id):
+    try:
+        start_time = time.time()
+        if not client:
+            tasks, message = fallback_task_classification(goal_data)
+            return tasks, message, time.time() - start_time
+        
+        # 🎯 SMART DETECTION: Check if this is a delivery/procurement goal
+        is_delivery_goal = detect_delivery_goal(goal_data)
+        
+        if is_delivery_goal:
+            print(f"🎯 DELIVERY GOAL DETECTED: Using 13-step process")
+            return generate_13_step_delivery_tasks(goal, goal_data, ai_meta_id)
+        else:
+            print(f"🎯 NON-DELIVERY GOAL: Using AI task generation")
+            return generate_ai_custom_tasks(goal, goal_data, ai_meta_id)
+        
+    except Exception as e:
+        log_ai_error("task_classification", str(e), ai_meta_id, goal['id'])
+        tasks, message = generate_fallback_tasks_based_on_type(goal_data)
+        return tasks, message, time.time() - start_time
+
+def detect_delivery_goal(goal_data):
+    """Detect if this is a delivery/procurement goal that should use 13-step process"""
+    delivery_keywords = [
+        'deliver', 'procure', 'order', 'ship', 'logistics', 'supply', 
+        'import', 'export', 'customs', 'clearance', 'transport',
+        'stock', 'inventory', 'supplier', 'shipment', 'border',
+        'kenya', 'ethiopia', 'moyale', 'clearance', 'customs'
+    ]
+    
+    title = goal_data.get('title', '').lower()
+    description = goal_data.get('description', '').lower()
+    output = goal_data.get('output', '').lower()
+    
+    # Check for delivery-related keywords
+    text_to_check = f"{title} {description} {output}"
+    
+    keyword_matches = sum(1 for keyword in delivery_keywords if keyword in text_to_check)
+    
+    # If we have at least 2 delivery keywords, consider it a delivery goal
+    is_delivery = keyword_matches >= 2
+    
+    print(f"🔍 Goal Type Detection: {keyword_matches} delivery keywords - {'DELIVERY' if is_delivery else 'NON-DELIVERY'}")
+    print(f"   Title: {title}")
+    print(f"   Keywords found: {[kw for kw in delivery_keywords if kw in text_to_check]}")
+    
+    return is_delivery
+
+def generate_fallback_tasks_based_on_type(goal_data):
+    """Generate fallback tasks based on goal type (delivery vs custom)"""
+    try:
+        # Check if this is a delivery goal
+        is_delivery = detect_delivery_goal(goal_data)
+        
+        if is_delivery:
+            print("🎯 Using delivery fallback for goal")
+            # Return empty tasks - let the calling function handle the delivery fallback
+            return [], "Delivery goal - will use 13-step process"
+        else:
+            print("🎯 Using custom fallback for goal")
+            # For now return empty, the calling function will handle custom fallback
+            return [], "Custom goal - will use AI generation"
+            
+    except Exception as e:
+        print(f"❌ Error in fallback task type detection: {e}")
+        return [], "Error in fallback detection"
+
+def update_ai_progress(ai_meta_id, progress, activity, details=""):
+    """Update AI meta progress"""
+    try:
+        supabase = get_supabase_client()
+        update_data = {
+            "output_json": {
+                "status": "processing",
+                "progress": progress,
+                "current_activity": activity,
+                "activity_details": details
+            },
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        supabase.table("ai_meta").update(update_data).eq("id", ai_meta_id).execute()
+        print(f"📊 AI Progress: {progress}% - {activity}")
+    except Exception as e:
+        print(f"❌ Error updating AI progress: {e}")
+
+def log_ai_error(function_name, error_message, ai_meta_id=None, goal_id=None, prompt=None, response=None):
+    """Log AI errors with context"""
+    print(f"❌ AI Error in {function_name}: {error_message}")
+    
+    if ai_meta_id:
+        try:
+            supabase = get_supabase_client()
+            error_data = {
+                "output_json": {
+                    "status": "error",
+                    "error": error_message,
+                    "function": function_name,
+                    "goal_id": goal_id,
+                    "error_time": datetime.utcnow().isoformat()
+                },
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            supabase.table("ai_meta").update(error_data).eq("id", ai_meta_id).execute()
+        except Exception as e:
+            print(f"❌ Failed to log AI error: {e}")
+
+def fallback_task_classification(goal_data):
+    """Fallback task classification when AI is not available"""
+    try:
+        supabase = get_supabase_client()
+        created_tasks = []
+        
+        # Simple fallback - create 3 basic tasks
+        base_tasks = [
+            {
+                "description": f"Plan and strategize {goal_data['title']}",
+                "priority": "high",
+                "estimated_hours": 8
+            },
+            {
+                "description": f"Execute {goal_data['title']}",
+                "priority": "medium", 
+                "estimated_hours": 16
+            },
+            {
+                "description": f"Review and complete {goal_data['title']}",
+                "priority": "low",
+                "estimated_hours": 4
+            }
+        ]
+        
+        base_date = datetime.now()
+        
+        for i, task_template in enumerate(base_tasks):
+            due_date = (base_date + timedelta(days=i*3)).strftime('%Y-%m-%d')
+            
+            task_record = {
+                "task_description": task_template['description'],
+                "objective_id": goal_data.get('id', 'fallback'),
+                "due_date": due_date,
+                "priority": task_template['priority'],
+                "estimated_hours": task_template['estimated_hours'],
+                "status": "not_started",
+                "completion_percentage": 0,
+                "ai_suggested": False
+            }
+            
+            # For fallback, we don't actually save to database without a goal ID
+            created_tasks.append(task_record)
+        
+        return created_tasks, f"Generated {len(created_tasks)} fallback tasks"
+        
+    except Exception as e:
+        print(f"❌ Error in fallback task classification: {e}")
+        return [], "Failed to generate fallback tasks"
+
+def generate_custom_fallback_tasks(goal, goal_data, ai_meta_id):
+    """Generate fallback tasks for non-delivery goals when AI fails"""
+    try:
+        supabase = get_supabase_client()
+        created_tasks = []
+        
+        base_date = datetime.now()
+        
+        # Create 5-7 generic strategic tasks based on goal type
+        generic_tasks = [
+            {
+                "description": f"Strategic planning and analysis for {goal_data['title']}",
+                "role": "Account Executive",
+                "days_offset": 0,
+                "priority": "high"
+            },
+            {
+                "description": f"Research and market analysis for {goal_data['title']}",
+                "role": "Product Development Manager", 
+                "days_offset": 2,
+                "priority": "high"
+            },
+            {
+                "description": f"Stakeholder engagement and partnership development",
+                "role": "Account Executive",
+                "days_offset": 5,
+                "priority": "medium"
+            },
+            {
+                "description": f"Resource planning and budget allocation",
+                "role": "Commercial and Finance Specialist",
+                "days_offset": 7,
+                "priority": "medium"
+            },
+            {
+                "description": f"Implementation plan and timeline development",
+                "role": "Supply Chain Specialist",
+                "days_offset": 10,
+                "priority": "medium"
+            },
+            {
+                "description": f"Progress review and adjustment strategy",
+                "role": "Account Executive",
+                "days_offset": 14,
+                "priority": "low"
+            }
+        ]
+        
+        for i, task_template in enumerate(generic_tasks):
+            due_date = (base_date + timedelta(days=task_template['days_offset'])).strftime('%Y-%m-%d')
+            
+            strategic_metadata = {
+                "required_skills": ["Strategic planning", "Analysis", "Coordination"],
+                "success_criteria": f"Complete {task_template['description']} successfully",
+                "complexity": "medium",
+                "strategic_analysis": {
+                    "validation_score": "Custom fallback applied",
+                    "context": f"Custom strategic task for {goal_data['title']}",
+                    "objective": goal_data['title'],
+                    "process": task_template['description'],
+                    "delivery": due_date,
+                    "reporting_requirements": "Completion report and next steps",
+                    "q4_execution_context": "Q4 2025 execution",
+                    "process_applied": "Custom AI Task Generation",
+                    "goal_type": "custom"
+                },
+                "strategic_phase": f"Strategic Phase {i+1}",
+                "key_stakeholders": [task_template['role']],
+                "potential_bottlenecks": ["Resource constraints", "Timeline pressure"],
+                "resource_requirements": ["Strategic planning tools"],
+                "assigned_role": task_template['role'],
+                "process_step": f"Custom Step {i+1}",
+                "information_requirements": "Goal-specific information",
+                "context": f"Executing {task_template['description']}",
+                "objective": goal_data['title'],
+                "process": task_template['description'],
+                "delivery": due_date,
+                "reporting_requirements": "Completion report",
+                "goal_type": "custom",
+                "objective_number": goal.get('pre_number', 'N/A')
+            }
+            
+            task_record = {
+                "task_description": task_template['description'],
+                "objective_id": goal['id'],
+                "due_date": due_date,
+                "priority": task_template['priority'],
+                "estimated_hours": 8,
+                "status": "ai_suggested",
+                "completion_percentage": 0,
+                "ai_suggested": True,
+                "strategic_metadata": strategic_metadata
+            }
+            
+            task_result = supabase.table("action_plans").insert(task_record).execute()
+            if task_result.data:
+                created_tasks.append(task_result.data[0])
+        
+        # Update AI meta with custom fallback info
+        if ai_meta_id:
+            supabase.table("ai_meta").update({
+                "output_json": {
+                    "status": "custom_fallback_completed",
+                    "tasks_generated": len(created_tasks),
+                    "goal_id": goal['id'],
+                    "goal_type": "custom",
+                    "process_applied": "Custom fallback",
+                    "framework_version": "custom",
+                    "fallback_used": True
+                }
+            }).eq("id", ai_meta_id).execute()
+        
+        return created_tasks, f"Generated {len(created_tasks)} custom fallback tasks", time.time() - start_time
+        
+    except Exception as e:
+        print(f"❌ Error in custom fallback generation: {e}")
+        return [], "Failed to generate custom fallback tasks", 0
+
+def process_and_save_custom_tasks(goal, ai_tasks_data, ai_analysis, ai_meta_id, task_time):
+    """Process and save custom AI-generated tasks to database"""
+    try:
+        supabase = get_supabase_client()
+        created_tasks = []
+        
+        strategic_analysis = ai_analysis.get('strategic_analysis', {})
+        
+        for i, task_data in enumerate(ai_tasks_data):
+            if not task_data.get('task_description'):
+                continue
+            
+            # For custom tasks, we don't have predefined process steps
+            # Use AI-generated data with fallbacks
+            strategic_metadata = {
+                "required_skills": task_data.get('required_skills', ["Strategic planning", "Coordination"]),
+                "success_criteria": task_data.get('success_criteria', 'Task completed successfully'),
+                "complexity": task_data.get('complexity', 'medium'),
+                "strategic_analysis": strategic_analysis,
+                "strategic_phase": task_data.get('strategic_phase', f'Phase {i+1}'),
+                "key_stakeholders": task_data.get('key_stakeholders', []),
+                "potential_bottlenecks": task_data.get('potential_bottlenecks', []),
+                "resource_requirements": task_data.get('resource_requirements', []),
+                "assigned_role": task_data.get('assigned_role', 'Account Executive'),
+                "process_step": f"Custom Step {i+1}",
+                "context": task_data.get('context', ''),
+                "objective": goal['title'],
+                "process": task_data.get('process', task_data['task_description']),
+                "delivery": task_data.get('due_date'),
+                "reporting_requirements": task_data.get('reporting_requirements', 'Completion report'),
+                "goal_type": "custom",
+                "objective_number": goal.get('pre_number', 'N/A')
+            }
+            
+            task_record = {
+                "task_description": task_data['task_description'],
+                "objective_id": goal['id'],
+                "due_date": task_data.get('due_date'),
+                "priority": task_data.get('priority', 'medium'),
+                "estimated_hours": task_data.get('estimated_hours', 8),
+                "status": "ai_suggested",
+                "completion_percentage": 0,
+                "ai_meta_id": ai_meta_id,
+                "ai_suggested": True,
+                "strategic_metadata": strategic_metadata
+            }
+            
+            task_result = supabase.table("action_plans").insert(task_record).execute()
+            if task_result.data:
+                created_tasks.append(task_result.data[0])
+        
+        # Update AI meta with custom task info
+        if ai_meta_id:
+            supabase.table("ai_meta").update({
+                "output_json": {
+                    "status": "custom_ai_tasks_completed",
+                    "tasks_generated": len(created_tasks),
+                    "goal_id": goal['id'],
+                    "goal_type": "custom",
+                    "process_applied": "Custom AI Generation",
+                    "framework_version": "custom",
+                    "ai_analysis_used": True,
+                    "strategic_analysis": strategic_analysis
+                }
+            }).eq("id", ai_meta_id).execute()
+        
+        return created_tasks, f"Created {len(created_tasks)} custom AI tasks", task_time
+        
+    except Exception as e:
+        print(f"❌ Error processing custom tasks: {e}")
+        return generate_custom_fallback_tasks(goal,ai_meta_id)
+    
+def generate_ai_custom_tasks(goal, goal_data, ai_meta_id):
+    """Generate custom AI tasks for non-delivery goals"""
+    start_time = time.time()  # 🎯 ADD MISSING START_TIME
+    
+    try:
+        prompt = f"""
+You are generating tasks for a NON-DELIVERY goal. Create appropriate, customized tasks.
+
+GOAL: {goal_data['title']}
+DESCRIPTION: {goal_data.get('description', '')}
+OUTPUT: {goal_data.get('output', '')}
+DEADLINE: {goal_data.get('deadline', 'Q4 2025')}
+
+DEPARTMENT STRUCTURE:
+- SUPPLY CHAIN: Logistics, inventory, customs, transport
+- SALES: Client relationships, deals, partnerships  
+- PRODUCT: Quality, specifications, testing
+- FINANCE & ADMIN: Payments, compliance, administration
+
+Generate 5-8 appropriate tasks for this goal. Focus on:
+- Strategic planning and analysis
+- Research and development  
+- Partnership building
+- Market analysis
+- Process improvement
+- Training and development
+
+Return ONLY valid JSON with tasks that are appropriate for this specific goal.
+"""
+        
+        print(f"🤖 Generating custom AI tasks: {goal_data['title'][:50]}...")
+        
+        if ai_meta_id:
+            update_ai_progress(ai_meta_id, 40, "Custom AI Task Generation", "Creating goal-specific tasks")
+        
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Return ONLY valid JSON. Generate 5-8 customized tasks for this specific goal."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,  # Higher temperature for creative tasks
+            max_tokens=3000,
+            timeout=30
+        )
+        
+        task_time = time.time() - start_time
+        response_text = response.choices[0].message.content.strip()
+        
+        ai_analysis = safe_json_parse(response_text, {})
+        if not ai_analysis:
+            raise Exception("Invalid JSON response from AI")
+        
+        ai_tasks_data = ai_analysis.get('tasks', [])
+        
+        # For custom tasks, we don't force a specific number, but validate we have reasonable tasks
+        if len(ai_tasks_data) < 3:
+            print(f"⚠️ AI returned only {len(ai_tasks_data)} tasks, using fallback")
+            return generate_custom_fallback_tasks(goal, goal_data, ai_meta_id)
+        
+        return process_and_save_custom_tasks(goal, ai_tasks_data, ai_analysis, ai_meta_id, task_time)
+        
+    except Exception as e:
+        print(f"❌ Error in custom AI task generation: {e}")
+        return generate_custom_fallback_tasks(goal, goal_data, ai_meta_id)
+
+def generate_13_step_fallback_tasks(goal, goal_data, standard_process, ai_meta_id):
+    """Fallback to generate exactly 13 tasks using predefined process"""
+    supabase = get_supabase_client()
+    created_tasks = []
+    
+    base_date = datetime.now()
+    
+    for i, (step_key, step_data) in enumerate(standard_process.items()):
+        due_date = (base_date + timedelta(days=i)).strftime('%Y-%m-%d')
+        
+        strategic_metadata = {
+            "required_skills": ["Process execution", "Coordination", step_data['responsible']],
+            "success_criteria": f"Complete {step_data['activities']} successfully",
+            "complexity": "medium",
+            "strategic_analysis": {
+                "validation_score": "13-step process applied",
+                "context": f"Standard delivery process for {goal_data['title']}",
+                "objective": goal_data['title'],
+                "process": step_data['activities'],
+                "delivery": due_date,
+                "reporting_requirements": step_data['deliverable'],
+                "q4_execution_context": "Q4 2025 execution",
+                "process_applied": "UPDATED Order-to-Delivery Standard Framework",
+                "goal_type": "delivery"
+            },
+            "strategic_phase": f"Process Step {i+1}",
+            "key_stakeholders": [step_data['responsible']],
+            "potential_bottlenecks": ["Timeline constraints", "Coordination requirements"],
+            "resource_requirements": ["Standard process tools"],
+            "assigned_role": step_data['responsible'],
+            "process_step": step_key,
+            "information_requirements": "Using standard delivery framework",
+            "context": f"Executing {step_key} for {goal_data['title']}",
+            "objective": goal_data['title'],
+            "process": step_data['activities'],
+            "delivery": due_date,
+            "reporting_requirements": step_data['deliverable'],
+            "goal_type": "delivery"
+        }
+        
+        task_record = {
+            "task_description": f"{step_key}: {step_data['activities']}",
+            "objective_id": goal['id'],
+            "due_date": due_date,
+            "priority": "medium",
+            "estimated_hours": 8,
+            "status": "ai_suggested",
+            "completion_percentage": 0,
+            "ai_suggested": True,
+            "strategic_metadata": strategic_metadata
+        }
+        
+        task_result = supabase.table("action_plans").insert(task_record).execute()
+        if task_result.data:
+            created_tasks.append(task_result.data[0])
+    
+    # Update AI meta with fallback info
+    if ai_meta_id:
+        supabase.table("ai_meta").update({
+            "output_json": {
+                "status": "13_step_fallback_completed",
+                "tasks_generated": len(created_tasks),
+                "goal_id": goal['id'],
+                "goal_type": "delivery",
+                "process_applied": "13-step fallback",
+                "framework_version": "13-step",
+                "fallback_used": True
+            }
+        }).eq("id", ai_meta_id).execute()
+    
+    return created_tasks, f"Generated {len(created_tasks)} delivery tasks using 13-step fallback", time.time() - start_time
+
+def process_and_save_tasks(goal, ai_tasks_data, standard_process, ai_meta_id, task_time, task_type):
+    """Process and save tasks to database"""
+    supabase = get_supabase_client()
+    created_tasks = []
+    
+    # 🎯 GET OBJECTIVE NUMBER FROM GOAL
+    objective_number = goal.get('pre_number', 'N/A')
+    
+    for i, task_data in enumerate(ai_tasks_data):
+        if not task_data.get('task_description'):
+            print(f"⚠️ Skipping task {i}: No task_description")
+            continue
+        
+        # Get the corresponding standard process step
+        process_step_key = list(standard_process.keys())[i]
+        process_step_data = standard_process[process_step_key]
+        
+        # Use AI data with fallbacks
+        task_description = task_data.get('task_description', f"{process_step_key}: {process_step_data['activities']}")
+        due_date = task_data.get('due_date', (datetime.now() + timedelta(days=i)).strftime('%Y-%m-%d'))
+        priority = task_data.get('priority', 'medium')
+        estimated_hours = task_data.get('estimated_hours', 8)
+        assigned_role = task_data.get('assigned_role', process_step_data['responsible'])
+        
+        strategic_metadata = {
+            "required_skills": ["Process execution", "Coordination", assigned_role],
+            "success_criteria": f"Complete {process_step_data['activities']} successfully",
+            "complexity": "medium",
+            "strategic_analysis": {
+                "validation_score": "13-step process applied",
+                "context": f"Standard delivery process for {goal['title']}",
+                "objective": f"{objective_number} - {goal['title']}",  # 🎯 INCLUDE OBJECTIVE NUMBER
+                "process": process_step_data['activities'],
+                "delivery": due_date,
+                "reporting_requirements": process_step_data['deliverable'],
+                "q4_execution_context": "Q4 2025 execution",
+                "process_applied": "UPDATED Order-to-Delivery Standard Framework",
+                "goal_type": "delivery",
+                "objective_number": objective_number  # 🎯 ADD THIS
+            },
+            "strategic_phase": f"Process Step {i+1}",
+            "key_stakeholders": [assigned_role],
+            "potential_bottlenecks": ["Timeline constraints", "Coordination requirements"],
+            "resource_requirements": ["Standard process tools"],
+            "assigned_role": assigned_role,
+            "process_step": process_step_key,
+            "information_requirements": "Using standard delivery framework",
+            "context": f"Executing {process_step_key} for objective {objective_number}",  # 🎯 INCLUDE NUMBER
+            "objective": f"{objective_number} - {goal['title']}",  # 🎯 INCLUDE NUMBER
+            "process": process_step_data['activities'],
+            "delivery": due_date,
+            "reporting_requirements": process_step_data['deliverable'],
+            "goal_type": "delivery",
+            "objective_number": objective_number  # 🎯 INCLUDE NUMBER
+        }
+        
+        task_record = {
+            "task_description": task_description,
+            "objective_id": goal['id'],
+            "due_date": due_date,
+            "priority": priority,
+            "estimated_hours": estimated_hours,
+            "status": "ai_suggested",
+            "completion_percentage": 0,
+            "ai_meta_id": ai_meta_id,
+            "ai_suggested": True,
+            "strategic_metadata": strategic_metadata
+        }
+        
+        try:
+            task_result = supabase.table("action_plans").insert(task_record).execute()
+            if task_result.data:
+                created_tasks.append(task_result.data[0])
+                print(f"✅ Saved task {i+1} for {objective_number}: {task_description[:50]}...")
+            else:
+                print(f"❌ Failed to save task {i+1} for {objective_number}")
+        except Exception as e:
+            print(f"❌ Error saving task {i+1} for {objective_number}: {e}")
+    
+    # Update AI meta with results
+    if ai_meta_id:
+        try:
+            supabase.table("ai_meta").update({
+                "output_json": {
+                    "status": "13_step_delivery_completed",
+                    "tasks_generated": len(created_tasks),
+                    "goal_id": goal['id'],
+                    "goal_type": "delivery",
+                    "process_applied": "13-step delivery",
+                    "framework_version": "13-step",
+                    "processing_time": task_time,
+                    "objective_number": objective_number  # 🎯 INCLUDE NUMBER
+                }
+            }).eq("id", ai_meta_id).execute()
+        except Exception as e:
+            print(f"❌ Error updating AI meta: {e}")
+    
+    return created_tasks, f"Created {len(created_tasks)} {task_type} tasks for {objective_number}", task_time
 
 @task_bp.route('/api/tasks/debug-routes', methods=['GET'])
 def debug_routes():
@@ -1572,44 +2078,97 @@ def update_task(task_id):
 
 # Add this to your backend task_routes.py
 
-@task_bp.route('/api/tasks/dashboard', methods=['GET'])
+@task_bp.route('/api/tasks/filter-by-objective', methods=['GET'])
 @token_required
-def get_task_dashboard():
-    """Get task dashboard data - FIXED VERSION"""
+def get_tasks_filtered_by_objective():
+    """Get tasks filtered by objective - FIXED TO INCLUDE OBJECTIVE PRIORITY"""
     try:
         supabase = get_supabase_client()
         
-        user_role = g.user.get('role') if hasattr(g, 'user') and g.user else None
+        objective_id = request.args.get('objective_id')
+        priority_filter = request.args.get('priority')
+        created_date = request.args.get('created_date')
+        user_role = g.user.get('role')
         user_employee_id = safe_get_employee_id()
         
-        print(f"🔍 Dashboard Debug - Role: {user_role}, Employee ID: {user_employee_id}")
+        # Build the query with objective data - FIXED: Include priority field
+        query = supabase.table("action_plans").select(
+            "*, employees!assigned_to(name, email, department, role), objectives(title, description, pre_number, priority, created_at)"
+        )
+        
+        # Apply objective filter if provided
+        if objective_id and objective_id != 'all':
+            query = query.eq("objective_id", objective_id)
+        
+        # Apply objective priority filter if provided
+        if priority_filter and priority_filter != 'All':
+            if priority_filter == "No Objective":
+                # Filter tasks that have no objective
+                query = query.is_("objective_id", "null")
+            else:
+                # Filter by objective priority
+                query = query.eq("objectives.priority", priority_filter)
+        
+        # Apply creation date filter if provided
+        if created_date:
+            # Filter tasks created on this specific date
+            query = query.eq("created_at", created_date)
+        
+        # Role-based filtering
+        if user_role == 'employee':
+            if user_employee_id:
+                query = query.or_(f"assigned_to.eq.{user_employee_id},assigned_to_multiple.cs.{{{user_employee_id}}}")
+            else:
+                return jsonify({'success': False, 'error': 'Employee ID not found'}), 400
+        
+        result = query.order("created_at", desc=True).execute()
+        
+        tasks = result.data if result.data else []
+        return jsonify({'success': True, 'tasks': tasks})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@task_bp.route('/api/tasks/dashboard', methods=['GET'])
+@token_required
+def get_task_dashboard():
+    """Get task dashboard data with objective filtering - FIXED TO INCLUDE OBJECTIVE PRIORITY"""
+    try:
+        supabase = get_supabase_client()
+        
+        user_role = g.user.get('role')
+        user_employee_id = safe_get_employee_id()
+        objective_id = request.args.get('objective_id')
         
         if user_role in ['admin', 'superadmin']:
-            # Admin sees all tasks with proper joins
-            print("👨‍💼 Admin accessing dashboard - loading all tasks")
-            tasks_result = supabase.table("action_plans")\
-                .select("*, employees!assigned_to(name, email, department, role), objectives(title, description)")\
-                .execute()
+            # FIXED: Include priority in the select
+            query = supabase.table("action_plans").select(
+                "*, employees!assigned_to(name, email, department, role), objectives(title, description, pre_number, priority)"
+            )
+            
+            # Apply objective filter for admin
+            if objective_id and objective_id != 'all':
+                query = query.eq("objective_id", objective_id)
+                
+            tasks_result = query.execute()
         else:
-            # Employee sees only their tasks
+            # Employee view with objective filtering
             if user_employee_id:
                 employee_id_str = str(user_employee_id)
-                print(f"👤 Employee {employee_id_str} accessing dashboard")
-                tasks_result = supabase.table("action_plans")\
-                    .select("*, employees!assigned_to(name, email, department, role), objectives(title, description)")\
-                    .or_(f"assigned_to.eq.{employee_id_str},assigned_to_multiple.cs.{{{employee_id_str}}}")\
-                    .execute()
+                # FIXED: Include priority in the select
+                query = supabase.table("action_plans").select(
+                    "*, employees!assigned_to(name, email, department, role), objectives(title, description, pre_number, priority)"
+                ).or_(f"assigned_to.eq.{employee_id_str},assigned_to_multiple.cs.{{{employee_id_str}}}")
+                
+                # Apply objective filter for employee
+                if objective_id and objective_id != 'all':
+                    query = query.eq("objective_id", objective_id)
+                    
+                tasks_result = query.execute()
             else:
                 return jsonify({'success': False, 'error': 'Employee ID not found'}), 400
         
         tasks = tasks_result.data if tasks_result.data else []
-        
-        # Ensure each task has at least an empty employees object
-        for task in tasks:
-            if 'employees' not in task or task['employees'] is None:
-                task['employees'] = {}
-            if 'objectives' not in task or task['objectives'] is None:
-                task['objectives'] = {}
         
         # Calculate statistics
         total_tasks = len(tasks)
@@ -1617,13 +2176,10 @@ def get_task_dashboard():
         pending_tasks = len([t for t in tasks if t.get('status') == 'not_started'])
         in_progress_tasks = len([t for t in tasks if t.get('status') == 'in_progress'])
         
-        # Overdue tasks
         today = datetime.utcnow().date()
         overdue_tasks = len([t for t in tasks if t.get('due_date') and 
                            datetime.fromisoformat(t['due_date'].replace('Z', '')).date() < today and 
                            t.get('status') != 'completed'])
-        
-        print(f"📊 Dashboard stats - Total: {total_tasks}, Completed: {completed_tasks}, In Progress: {in_progress_tasks}, Pending: {pending_tasks}, Overdue: {overdue_tasks}")
         
         return jsonify({
             'success': True,
@@ -1638,9 +2194,6 @@ def get_task_dashboard():
         })
             
     except Exception as e:
-        print(f"❌ Error in get_task_dashboard: {e}")
-        import traceback
-        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @task_bp.route('/api/tasks/employee/<employee_id>', methods=['GET'])
@@ -2317,6 +2870,8 @@ def get_ai_meta_progress(ai_meta_id):
     
 # ========== RAG IMPLEMENTATION FOR EMPLOYEE RECOMMENDATIONS ==========
 
+# ========== SIMPLIFIED RAG IMPLEMENTATION ==========
+
 def extract_text_from_google_drive_url(google_drive_url):
     """Extract text from Google Drive URL - handles job_description_url column"""
     try:
@@ -2398,507 +2953,800 @@ def extract_text_from_docx(docx_content):
         print(f"❌ Error extracting text from DOCX: {e}")
         return None
 
-def create_employee_jd_embeddings(employees):
+def identify_responsible_role_from_process(task_description):
     """
-    Create simple text embeddings for employee JD matching
-    This is a simplified version - in production, you'd use proper embedding models
+    SIMPLE AND DIRECT role identification - strictly follows the 13-step process
     """
-    embeddings = []
-    
-    for employee in employees:
-        # Extract JD text if available
-        jd_text = ""
-        if employee.get('google_drive_jd'):
-            jd_text = extract_text_from_google_drive_url(employee['google_drive_jd'])
+    if not task_description:
+        return None
         
-        # Create embedding profile
-        profile_text = f"""
-        Name: {employee.get('name', '')}
-        Role: {employee.get('role', '')}
-        Title: {employee.get('title', '')}
-        Department: {employee.get('department', '')}
-        Skills: {', '.join(employee.get('skills', []))}
-        Experience: {employee.get('experience_years', 0)} years
-        Strengths: {', '.join(employee.get('strengths', []))}
-        Job Description: {jd_text if jd_text else 'Not available'}
-        """
-        
-        embedding = {
-            'employee_id': employee['id'],
-            'profile_text': profile_text.lower(),
-            'skills': [skill.lower() for skill in employee.get('skills', [])],
-            'role': employee.get('role', '').lower(),
-            'department': employee.get('department', '').lower(),
-            'experience_years': employee.get('experience_years', 0),
-            'jd_available': bool(jd_text),
-            'jd_text': jd_text
-        }
-        embeddings.append(embedding)
-    
-    return embeddings
-
-def semantic_similarity_score(task_description, employee_embedding):
-    """
-    Calculate semantic similarity score between task and employee profile
-    This is a simplified version - in production, use proper embedding models
-    """
     task_lower = task_description.lower()
-    profile_text = employee_embedding['profile_text']
     
-    score = 0
-    matches = []
-    
-    # Skill matching
-    for skill in employee_embedding['skills']:
-        if skill in task_lower:
-            score += 15
-            matches.append(f"Skill: {skill}")
-    
-    # Role matching
-    if employee_embedding['role'] and employee_embedding['role'] in task_lower:
-        score += 20
-        matches.append(f"Role: {employee_embedding['role']}")
-    
-    # Department matching
-    if employee_embedding['department'] and employee_embedding['department'] in task_lower:
-        score += 10
-        matches.append(f"Department: {employee_embedding['department']}")
-    
-    # Keyword matching in JD text
-    if employee_embedding['jd_text']:
-        jd_lower = employee_embedding['jd_text'].lower()
-        # Check for task-related keywords in JD
-        task_keywords = ['manage', 'develop', 'create', 'implement', 'analyze', 'coordinate', 'lead']
-        for keyword in task_keywords:
-            if keyword in task_lower and keyword in jd_lower:
-                score += 5
-                matches.append(f"JD keyword: {keyword}")
-    
-    # Experience bonus
-    if employee_embedding['experience_years'] >= 5:
-        score += 15
-    elif employee_embedding['experience_years'] >= 3:
-        score += 10
-    elif employee_embedding['experience_years'] >= 1:
-        score += 5
-    
-    # JD availability bonus
-    if employee_embedding['jd_available']:
-        score += 5
-    
-    return min(score, 100), matches
-
-def rag_employee_recommendations(task_description, employees, top_k=5,required_skills=None):
-    """
-    Advanced RAG-based employee recommendations using JD document analysis
-    """
-    try:
-        print(f"🔍 Starting RAG analysis for {len(employees)} employees...")
+    # DIRECT MAPPING - Exact process step to role
+    process_role_mapping = {
+        # Step 1 - Account Executive
+        "finalize deal": "Account Executive",
+        "deal documentation": "Account Executive", 
+        "proforma invoice": "Account Executive",
+        "commercial agreement": "Account Executive",
+        "signed pi": "Account Executive",
+        "commercial terms": "Account Executive",
         
-        recommendations = []
-        employees_processed = 0
+        # Step 2 - Supply Chain Specialist
+        "supplier stock": "Supply Chain Specialist",
+        "stock order": "Supply Chain Specialist",
+        "kenya suppliers": "Supply Chain Specialist",
+        "stock availability": "Supply Chain Specialist",
+        "inventory reservation": "Supply Chain Specialist",
+        "order confirmation": "Supply Chain Specialist",
+        "final pricing": "Supply Chain Specialist",
+        "supplier coordination": "Supply Chain Specialist",
         
-        for employee in employees:
-            try:
-                employees_processed += 1
-                
-                # Extract JD text if available - using job_description_url
-                jd_text = None
-                jd_available = False
-                if employee.get('job_description_url'):  # Changed from google_drive_jd
-                    print(f"📄 Extracting JD for {employee.get('name')}: {employee.get('job_description_url')[:50]}...")
-                    jd_text = extract_text_from_google_drive_url(employee['job_description_url'])
-                    jd_available = bool(jd_text)
-                    if jd_available:
-                        print(f"✅ Successfully extracted JD text for {employee.get('name')} ({len(jd_text)} chars)")
-                    else:
-                        print(f"❌ Failed to extract JD text for {employee.get('name')}")
-                
-                # Calculate base score from profile
-                base_score = calculate_base_matching_score(task_description, employee,required_skills)
-                
-                # Calculate RAG-enhanced score if JD available
-                rag_score = 0
-                key_matches = []
-                
-                if jd_available and jd_text:
-                    rag_score, jd_matches = calculate_jd_enhanced_score(task_description, jd_text, employee)
-                    key_matches.extend(jd_matches)
-                    # Boost score for JD availability
-                    base_score += 15
-                
-                # Combine scores
-                final_score = max(base_score, rag_score) if jd_available else base_score
-                
-                # Only include if above threshold
-                if final_score >= 40:
-                    recommendation = {
-                        'employee_id': employee['id'],
-                        'employee_name': employee['name'],
-                        'employee_role': employee.get('role', ''),
-                        'employee_department': employee.get('department', ''),
-                        'fit_score': final_score,
-                        'rag_enhanced_score': rag_score if jd_available else 0,
-                        'base_score': base_score,
-                        'key_qualifications': key_matches[:8],
-                        'experience_years': employee.get('experience_years', 0),
-                        'skills_match': [skill for skill in employee.get('skills', []) 
-                                       if skill.lower() in task_description.lower()],
-                        'jd_available': jd_available,
-                        'jd_confidence': 'high' if jd_available and rag_score > 70 else 
-                                        'medium' if jd_available and rag_score > 50 else 
-                                        'low' if jd_available else 'none',
-                        'reason': generate_rag_reason(employee, jd_available, key_matches, final_score),
-                        'rag_enhanced': jd_available
-                    }
-                    recommendations.append(recommendation)
-                    
-            except Exception as emp_error:
-                print(f"⚠️ Error processing employee {employee.get('name')}: {emp_error}")
-                continue
+        # Step 3 - Product Development Manager
+        "product management": "Product Development Manager",
+        "product approval": "Product Development Manager", 
+        "product validation":"Product Development Manager",
+        "quality standards": "Product Development Manager",
+        "specification approval": "Product Development Manager",
+        "technical assessment": "Product Development Manager",
+        "product acceptance": "Product Development Manager",
         
-        # Sort by fit score and return top K
-        sorted_recommendations = sorted(recommendations, key=lambda x: x['fit_score'], reverse=True)[:top_k]
+        # Step 4 - Tax Accounting and Admin Specialist
+        "foreign currency": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+        "bank permit": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+        "currency permit": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+        "bank permits": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
         
-        print(f"✅ RAG analysis completed: {len(sorted_recommendations)} recommendations from {employees_processed} employees")
-        return sorted_recommendations
+        # Step 5 -  Commercial & Finance Specialist (Consolidation and Kenya-Focused)
+        "supplier payment": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+        "payment processing": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+        "process payment": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+        "export documentation": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+        "payment confirmation": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
         
-    except Exception as e:
-        print(f"❌ RAG recommendation error: {e}")
-        return ultra_fast_employee_recommendations(task_description, employees, top_k)
-    
-
-def calculate_base_matching_score(task_description, employee, required_skills=None):
-    task_lower = task_description.lower()
-    score = 0
-
-    # Match against required_skills if provided
-    if required_skills:
-        employee_skills_lower = [s.lower() for s in employee.get('skills', [])]
-        for req_skill in required_skills:
-            req = req_skill.lower()
-            # Direct skill match
-            if req in employee_skills_lower:
-                score += 20
-            # Partial/fuzzy match (optional)
-            elif any(req in emp_skill or emp_skill in req for emp_skill in employee_skills_lower):
-                score += 10
-    else:
-        # Fallback to old logic using task description
-        skills = employee.get('skills', [])
-        skill_matches = sum(1 for skill in skills if skill.lower() in task_lower)
-        score += min(skill_matches * 10, 40)
-    
-    # Role matching
-    role = employee.get('role', '').lower()
-    if role and any(keyword in task_lower for keyword in [role]):
-        score += 30
-    
-    # Skills matching
-    skills = employee.get('skills', [])
-    skill_matches = sum(1 for skill in skills if skill.lower() in task_lower)
-    score += min(skill_matches * 10, 40)
-    
-    # Department matching
-    department = employee.get('department', '').lower()
-    if department and department in task_lower:
-        score += 15
-    
-    # Experience bonus
-    experience = employee.get('experience_years', 0)
-    if experience >= 5:
-        score += 20
-    elif experience >= 3:
-        score += 15
-    elif experience >= 1:
-        score += 10
-    
-    return min(score, 100)
-
-def calculate_jd_enhanced_score(task_description, jd_text, employee):
-    """Calculate JD-enhanced matching score"""
-    task_lower = task_description.lower()
-    jd_lower = jd_text.lower()
-    
-    score = 0
-    matches = []
-    
-    # Check for task keywords in JD
-    task_keywords = [
-        'manage', 'develop', 'create', 'implement', 'analyze', 
-        'coordinate', 'lead', 'design', 'build', 'execute'
-    ]
-    
-    for keyword in task_keywords:
-        if keyword in task_lower and keyword in jd_lower:
-            score += 8
-            matches.append(f"JD keyword: {keyword}")
-    
-    # Check for specific skills in JD
-    skills = employee.get('skills', [])
-    for skill in skills:
-        if skill.lower() in jd_lower and skill.lower() in task_lower:
-            score += 12
-            matches.append(f"JD skill: {skill}")
-    
-    # Check for role-specific terminology
-    role_terms = {
-        'developer': ['code', 'programming', 'software', 'debug'],
-        'manager': ['lead', 'manage', 'coordinate', 'oversee'],
-        'analyst': ['analyze', 'data', 'report', 'research'],
-        'designer': ['design', 'create', 'ui', 'ux', 'visual']
+        # Step 6 - Kenyan operation specialist
+        "transportation logistics": "Kenyan operation specialist",
+        "transport arrangement": "Kenyan operation specialist",
+        "appropriate truck": "Kenyan operation specialist",
+        "kenya operation": "Kenyan operation specialist",
+        
+        # Step 7 - Kenyan operation specialist
+        "kenya side": "Kenyan operation specialist",
+        "kenya dispatch": "Kenyan operation specialist", 
+        "kenya clearance": "Kenyan operation specialist",
+        "kenyan customs": "Kenyan operation specialist",
+        "kenya border": "Kenyan operation specialist",
+        "kenya moyale": "Kenyan operation specialist",
+        
+        # Step 8 - Ethiopian Operation Specialist
+        "ethiopian customs": "Ethiopia Operation Specialist (Senior)",
+        "ethiopian clearance": "Ethiopia Operation Specialist (Senior)",
+        "customs clearance": "Ethiopia Operation Specialist (Senior)",
+        "1st payment": "Ethiopia Operation Specialist (Senior)",
+        "permit value": "Ethiopia Operation Specialist (Senior)",
+        
+        # Step 9 - Tax Accounting and Admin Specialist
+        "tax reassessment": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+        "2nd tax": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+        "final payment": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+        "tax payment": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+        
+        # Step 10 - Ethiopian Operation Specialist
+        "product loading": "Ethiopia Operation Specialist (Senior)",
+        "dispatch coordination": "Ethiopia Operation Specialist (Senior)",
+        "product dispatch": "Ethiopia Operation Specialist (Senior)",
+        
+        # Step 11 - Ethiopian Operation Specialist
+        "transport monitoring": "Ethiopia Operation Specialist (Senior)",
+        "truck movement": "Ethiopia Operation Specialist (Senior)",
+        "truck tracking": "Ethiopia Operation Specialist (Senior)",
+        
+        # Step 12 - Tax Accounting and Admin Specialist
+        "final delivery": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+        "warehouse handover": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+        "customer delivery": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+        "customer warehouse": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+        
+        # Step 13 - Commercial and Finance Specialist
+        "post-delivery": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+        "financial settlements": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+        "document archiving": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+        "lesson learned": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+        "closed order": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)"
     }
     
-    for role, terms in role_terms.items():
-        if role in employee.get('role', '').lower():
-            for term in terms:
-                if term in task_lower and term in jd_lower:
-                    score += 10
-                    matches.append(f"Role term: {term}")
+    # DIRECT CHECK - No complex logic, just direct mapping
+    for keyword, role in process_role_mapping.items():
+        if keyword in task_lower:
+            print(f"🎯 DIRECT MATCH: '{keyword}' -> {role}")
+            return role
     
-    return min(score, 100), matches
+    # If no direct match, check for step numbers
+    step_keywords = {
+        "step 1": "Account Executive", "step1": "Account Executive", "1.": "Account Executive",
+        "step 2": "Supply Chain Specialist", "step2": "Supply Chain Specialist", "2.": "Supply Chain Specialist", 
+        "step 3": "Product Development Manager", "step3": "Product Development Manager", "3.": "Product Development Manager",
+        "step 4": "Tax Accounting & Admin Specialist (Ethiopia-Focused)", "step4": "Tax Accounting & Admin Specialist (Ethiopia-Focused)", "4.": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+        "step 5": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)", "step5": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)", "5.": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+        "step 6": "Kenyan operation specialist", "step6": "Kenyan operation specialist", "6.": "Kenyan operation specialist",
+        "step 7": "Kenyan operation specialist", "step7": "Kenyan operation specialist", "7.": "Kenyan operation specialist",
+        "step 8": "Ethiopian Operation Specialist", "step8": "Ethiopian Operation Specialist", "8.": "Ethiopian Operation Specialist",
+        "step 9": "Tax Accounting & Admin Specialist (Ethiopia-Focused)", "step9": "Tax Accounting & Admin Specialist (Ethiopia-Focused)", "9.": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+        "step 10": "Ethiopian Operation Specialist", "step10": "Ethiopian Operation Specialist", "10.": "Ethiopian Operation Specialist",
+        "step 11": "Ethiopian Operation Specialist", "step11": "Ethiopian Operation Specialist", "11.": "Ethiopian Operation Specialist",
+        "step 12": "Tax Accounting & Admin Specialist (Ethiopia-Focused)", "step12": "Tax Accounting & Admin Specialist (Ethiopia-Focused)", "12.": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+        "step 13": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)", "step13": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)", "13.": " Commercial & Finance Specialist (Consolidation and Kenya-Focused)"
+    }
+    
+    for step_keyword, role in step_keywords.items():
+        if step_keyword in task_lower:
+            print(f"🎯 STEP MATCH: '{step_keyword}' -> {role}")
+            return role
+    
+    print(f"❌ No process role identified for: {task_description}")
+    return None
 
-def generate_rag_reason(employee, jd_available, key_matches, score):
-    """Generate reasoning for RAG recommendations"""
-    base_reason = f"{employee['name']} ({employee.get('role', 'N/A')}) scored {score}%"
-    
-    if jd_available and key_matches:
-        match_details = ", ".join(key_matches[:3])
-        return f"{base_reason} based on JD analysis matching: {match_details}"
-    elif jd_available:
-        return f"{base_reason} (JD document analyzed but limited matches found)"
-    else:
-        return f"{base_reason} based on profile matching (no JD document available)"
-    
-def enhanced_process_employee_recommendations_for_task(task, employees, ai_meta_id):
+
+
+def get_role_based_qualifications(task_description, employee, jd_text=None):
     """
-    Complete RAG-enhanced employee recommendation process
+    Extract key qualifications with focus on role and task alignment
+    """
+    task_lower = task_description.lower()
+    qualifications = []
+    
+    # Role-based qualifications (primary)
+    employee_role = employee.get('role') or ''
+    if employee_role:
+        qualifications.append(f"Role: {employee_role}")
+    
+    # Check for role keywords in task
+    role_keywords = {
+        'supply chain': ['logistics', 'shipment', 'inventory', 'customs', 'border', 'transport'],
+        'sales': ['client', 'deal', 'agreement', 'invoice', 'customer', 'sales'],
+        'product': ['product', 'quality', 'specification', 'technical', 'testing'],
+        'finance': ['payment', 'bank', 'tax', 'financial', 'currency', 'accounting']
+    }
+    
+    for role_type, keywords in role_keywords.items():
+        if any(keyword in task_lower for keyword in keywords):
+            if role_type in employee_role.lower():
+                qualifications.append(f"Task-Role Alignment: {role_type.title()}")
+                break
+    
+    # Department-based qualifications
+    department = employee.get('department') or ''
+    if department:
+        qualifications.append(f"Department: {department}")
+    
+    # JD-based qualifications (if available)
+    if jd_text:
+        jd_lower = jd_text.lower()
+        
+        # Look for role-specific keywords in JD
+        matched_keywords = []
+        role_task_keywords = ['manage', 'coordinate', 'lead', 'process', 'arrange', 'finalize']
+        
+        for keyword in role_task_keywords:
+            if keyword in task_lower and keyword in jd_lower:
+                matched_keywords.append(keyword)
+        
+        if matched_keywords:
+            qualifications.append(f"JD Task Alignment: {', '.join(matched_keywords[:2])}")
+    
+    return qualifications[:4]  # Limit to 4 key qualifications
+
+def generate_role_based_reason(employee, jd_available, fit_score, task_description):
+    """
+    Generate reasoning focused on role and task alignment
+    """
+    base_reason = f"{employee['name']} ({employee.get('role', 'N/A')}) - {fit_score}% role-task alignment"
+    
+    if jd_available:
+        return f"{base_reason} (JD-verified role capabilities)"
+    else:
+        return f"{base_reason} (role and department matching)"
+
+def get_confidence_level(fit_score):
+    """Convert fit_score to confidence level"""
+    if fit_score >= 90:
+        return 'high'
+    elif fit_score >= 80:
+        return 'medium'
+    else:
+        return 'low'
+    
+
+def find_employee_by_exact_role(employees, target_role):
+    """
+    Find employees by EXACT role match first, then fall back to department
+    """
+    if not target_role or not employees:
+        return []
+    
+    target_role_lower = target_role.lower().strip()
+    exact_matches = []
+    department_matches = []
+    
+    # Department to roles mapping
+    department_roles = {
+        "SUPPLY CHAIN DEPARTMENT": [
+            "Supply Chain Specialist", 
+            "Kenyan operation specialist", 
+            "Ethiopian Operation Specialist"
+        ],
+        "SALES DEPARTMENT": [
+            "Account Executive"
+        ],
+        "PRODUCT DEVELOPMENT DEPARTMENT": [
+            "Product Development Manager"
+        ],
+        "FINANCE & ADMIN DEPARTMENT": [
+            "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
+            " Commercial & Finance Specialist (Consolidation and Kenya-Focused)"
+        ]
+    }
+    
+    # Find department for the target role
+    target_department = None
+    for dept, roles in department_roles.items():
+        if target_role in roles:
+            target_department = dept
+            break
+    
+    for employee in employees:
+        employee_role = (employee.get('role') or '').lower().strip()
+        employee_department = (employee.get('department') or '').upper().strip()
+        
+        # 1. EXACT ROLE MATCH (Highest priority)
+        if employee_role == target_role_lower:
+            exact_matches.append(employee)
+        
+        # 2. DEPARTMENT MATCH (Fallback - only if no exact matches)
+        elif target_department and employee_department == target_department:
+            department_matches.append(employee)
+    
+    print(f"🔍 Role matching for '{target_role}':")
+    print(f"   - Exact role matches: {len(exact_matches)}")
+    print(f"   - Department matches: {len(department_matches)}")
+    
+    # Return exact matches first, then department matches as fallback
+    if exact_matches:
+        return exact_matches
+    elif department_matches:
+        print(f"   ⚠️ Using department fallback for {target_role}")
+        return department_matches
+    else:
+        return []
+    
+def enhanced_role_based_employee_recommendations(task_description, employees, top_k=5):
+    """
+    CORRECTED RAG - Uses role-based assignment first, department only as fallback
+    """
+    try:
+        print(f"🔍 ENHANCED RAG for: {task_description[:100]}...")
+        
+        # STEP 1: Direct role identification from process
+        responsible_role = identify_responsible_role_from_process(task_description)
+        
+        # STEP 2: If role found, find employees with EXACT role first
+        if responsible_role:
+            print(f"🎯 PROCESS ROLE FOUND: {responsible_role}")
+            matched_employees = find_employee_by_exact_role(employees, responsible_role)
+            
+            if matched_employees:
+                employee = matched_employees[0]
+                assignment_type = "exact_role_assignment" if employee.get('role', '').lower() == responsible_role.lower() else "department_fallback_assignment"
+                
+                recommendation = {
+                    'employee_id': employee['id'],
+                    'employee_name': employee['name'],
+                    'employee_role': employee.get('role', ''),
+                    'employee_department': employee.get('department', ''),
+                    'fit_score': 100,
+                    'key_qualifications': [f"Process Role: {responsible_role}", f"Assignment: {assignment_type}"],
+                    'reason': f"Process assignment: {employee['name']} ({employee.get('role', '')}) handles {responsible_role} tasks",
+                    'rag_enhanced': False,
+                    'assignment_type': assignment_type,
+                    'role_based_assignment': True,
+                    'process_role_matched': responsible_role
+                }
+                print(f"✅ ASSIGNED: {employee['name']} as {responsible_role} ({assignment_type})")
+                return [recommendation]
+            else:
+                print(f"⚠️ No employees found for role: {responsible_role}")
+                # Continue to non-process analysis
+                responsible_role = None
+        
+        # STEP 3: For non-process tasks, use department-based analysis
+        print("🔍 Non-process task - using department-based analysis...")
+        return department_based_analysis(task_description, employees)
+        
+    except Exception as e:
+        print(f"❌ Enhanced RAG error: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+def department_based_analysis(task_description, employees):
+    """
+    Department-based analysis for non-process tasks
+    """
+    task_lower = task_description.lower()
+    recommendations = []
+    
+    # Department to task keyword mapping
+    department_keywords = {
+        "SUPPLY CHAIN DEPARTMENT": [
+            "logistics", "shipment", "inventory", "customs", "border", "transport",
+            "supplier", "stock", "delivery", "clearance", "dispatch", "shipping"
+        ],
+        "SALES DEPARTMENT": [
+            "client", "deal", "agreement", "invoice", "customer", "sales",
+            "commercial", "revenue", "proposal", "negotiation"
+        ],
+        "PRODUCT DEVELOPMENT DEPARTMENT": [
+            "product", "quality", "specification", "technical", "testing",
+            "validation", "development", "design", "engineering"
+        ],
+        "FINANCE & ADMIN DEPARTMENT": [
+            "payment", "bank", "tax", "financial", "currency", "accounting",
+            "budget", "compliance", "documentation", "admin", "administrative"
+        ]
+    }
+    
+    for employee in employees:
+        try:
+            employee_department = (employee.get('department') or '').upper().strip()
+            employee_role = employee.get('role') or ''
+            
+            if not employee_department:
+                continue
+                
+            # Check if employee's department keywords match the task
+            department_score = 0
+            if employee_department in department_keywords:
+                keywords = department_keywords[employee_department]
+                matching_keywords = sum(1 for keyword in keywords if keyword in task_lower)
+                department_score = min(matching_keywords * 15, 60)  # Max 60 points
+            
+            # Role relevance bonus
+            role_score = 0
+            if employee_role:
+                role_words = employee_role.lower().split()
+                role_matches = sum(1 for word in role_words if len(word) > 4 and word in task_lower)
+                role_score = min(role_matches * 10, 30)  # Max 30 points
+            
+            # Experience bonus
+            experience = employee.get('experience_years', 0)
+            exp_score = min(experience * 2, 10)  # Max 10 points
+            
+            total_score = department_score + role_score + exp_score
+            
+            if total_score >= 40:
+                recommendations.append({
+                    'employee_id': employee['id'],
+                    'employee_name': employee['name'],
+                    'employee_role': employee_role,
+                    'employee_department': employee_department,
+                    'fit_score': total_score,
+                    'key_qualifications': [
+                        f"Department: {employee_department}",
+                        f"Role: {employee_role}",
+                        f"Experience: {experience} years"
+                    ],
+                    'reason': f"Department-based match: {employee_department} expertise",
+                    'rag_enhanced': False,
+                    'assignment_type': 'department_analysis',
+                    'role_based_assignment': False
+                })
+                
+        except Exception as emp_error:
+            print(f"⚠️ Error processing employee {employee.get('name', 'Unknown')}: {emp_error}")
+            continue
+    
+    # Sort and return top recommendations
+    sorted_recommendations = sorted(recommendations, key=lambda x: x['fit_score'], reverse=True)
+    top_score = sorted_recommendations[0]['fit_score'] if sorted_recommendations else 0
+    
+    if top_score > 80:
+        return sorted_recommendations[:1]
+    elif top_score >= 60:
+        return sorted_recommendations[:min(2, len(sorted_recommendations))]
+    else:
+        return sorted_recommendations[:min(3, len(sorted_recommendations))]
+
+# Update the main function to use the corrected approach
+def corrected_process_employee_recommendations_for_task(task, employees, ai_meta_id):
+    """
+    CORRECTED RAG-enhanced employee recommendation process
+    Uses role-based assignment first, department only as fallback
     """
     try:
         supabase = get_supabase_client()
         start_time = time.time()
         
-        print(f"👥 Processing RAG-enhanced employee recommendations for task: {task['task_description'][:50]}...")
+        print(f"👥 Processing CORRECTED RAG employee recommendations for task: {task['task_description'][:50]}...")
         
-        # Step 1: Update progress - Starting JD extraction
+        # Step 1: Update progress
         update_data = {
             "output_json": {
                 "status": "processing",
                 "progress": 20,
-                "current_activity": "Extracting JD documents from Google Drive",
+                "current_activity": "Starting corrected RAG analysis",
                 "task_id": task['id'],
                 "employees_analyzed": len(employees),
-                "rag_enhanced": True
+                "rag_enhanced": True,
+                "assignment_strategy": "role_first_then_department"
             },
             "updated_at": datetime.utcnow().isoformat()
         }
         supabase.table("ai_meta").update(update_data).eq("id", ai_meta_id).execute()
         
-        # Step 2: Extract JD documents and create embeddings
-        employees_with_jd = []
-        for emp in employees:
-            if emp.get('google_drive_jd'):
-                jd_text = extract_text_from_google_drive_url(emp['google_drive_jd'])
-                if jd_text:
-                    emp['jd_text'] = jd_text
-                    employees_with_jd.append(emp)
-        
-        # Step 3: Update progress - JD analysis
-        update_data = {
-            "output_json": {
-                "status": "processing",
-                "progress": 40,
-                "current_activity": "Analyzing JD documents and creating semantic matches",
-                "task_id": task['id'],
-                "employees_with_jd": len(employees_with_jd),
-                "jd_analysis_complete": True
-            },
-            "updated_at": datetime.utcnow().isoformat()
-        }
-        supabase.table("ai_meta").update(update_data).eq("id", ai_meta_id).execute()
-        
-        # Step 4: Get RAG-based recommendations
-        rag_recommendations = rag_employee_recommendations(
-            task['task_description'], 
-            employees, 
-            top_k=5,
-            required_skills=required_skills
+        # Step 2: Get CORRECTED RAG-based recommendations
+        print(f"🔍 Calling enhanced_role_based_employee_recommendations for {len(employees)} employees...")
+        rag_recommendations = enhanced_role_based_employee_recommendations(
+            task_description=task['task_description'],
+            employees=employees
         )
         
-        # Step 5: Update progress - AI analysis with RAG context
-        update_data = {
-            "output_json": {
-                "status": "processing",
-                "progress": 70,
-                "current_activity": "AI analyzing RAG-enhanced matches",
-                "task_id": task['id'],
-                "rag_recommendations_count": len(rag_recommendations),
-                "top_rag_score": rag_recommendations[0]['fit_score'] if rag_recommendations else 0
-            },
-            "updated_at": datetime.utcnow().isoformat()
-        }
-        supabase.table("ai_meta").update(update_data).eq("id", ai_meta_id).execute()
+        print(f"✅ CORRECTED RAG function returned {len(rag_recommendations)} recommendations")
+        for rec in rag_recommendations:
+            assignment_type = rec.get('assignment_type', 'analysis')
+            role_based = rec.get('role_based_assignment', False)
+            print(f"   - {rec['employee_name']}: {rec['fit_score']}% ({assignment_type}, role_based: {role_based})")
         
-        # Step 6: Prepare enhanced AI prompt with RAG results
-        strategic_meta = task.get('strategic_metadata', {})
-        required_skills = strategic_meta.get('required_skills', [])
-        task_complexity = strategic_meta.get('complexity', 'medium')
-        
-        # Prepare RAG details for AI context
-        rag_details = []
-        for rec in rag_recommendations[:3]:  # Top 3 RAG matches
-            rag_details.append({
-                'employee_name': rec['employee_name'],
-                'fit_score': rec['fit_score'],
-                'key_matches': rec['key_qualifications'],
-                'jd_available': rec['jd_available'],
-                'skills_matches': rec.get('skills_match', [])
-            })
-        
-        # Enhanced AI prompt with RAG context
-        prompt = f"""
-        As an HR and talent matching expert, analyze this task and recommend the best employees using RAG-enhanced analysis that has already analyzed their Job Descriptions.
-
-        TASK ANALYSIS:
-        - Description: {task['task_description']}
-        - Required Skills: {', '.join(required_skills) if required_skills else 'Not specified'}
-        - Complexity: {task_complexity}
-        - Priority: {task.get('priority', 'medium')}
-        - Estimated Hours: {task.get('estimated_hours', 8)}
-        - Goal: {task.get('objectives', {}).get('title', 'Not specified')}
-
-        RAG-ENHANCED ANALYSIS RESULTS (Based on JD Document Analysis):
-        The following employees showed strong matches based on their Job Description analysis:
-        {json.dumps(rag_details, indent=2)}
-
-        FINAL RECOMMENDATION INSTRUCTIONS:
-        1. Consider the RAG-enhanced matching scores from JD analysis
-        2. Evaluate skills alignment with task requirements
-        3. Consider role relevance and experience level
-        4. Factor in department alignment and workload
-        5. Provide detailed reasoning for each recommendation
-
-        Return ONLY valid JSON with your top 3 recommendations:
-
-        {{
-            "recommendations": [
-                {{
-                    "employee_id": "uuid-string-here",
-                    "employee_name": "Employee Name",
-                    "fit_score": 85,
-                    "rag_enhanced_score": 90,
-                    "skills_match": 90,
-                    "role_alignment": 80,
-                    "experience_suitability": 75,
-                    "strengths_alignment": 85,
-                    "jd_based_confidence": "high/medium/low",
-                    "key_qualifications": ["Qualification 1", "Qualification 2"],
-                    "reason": "Detailed explanation including specific JD-based insights",
-                    "potential_gaps": ["Any skill or experience gaps"],
-                    "development_opportunity": true/false,
-                    "confidence": "high/medium/low"
-                }}
-            ],
-            "analysis_summary": "Brief summary of why these employees are the best fit",
-            "total_employees_considered": {len(employees)},
-            "employees_with_jd": {len(employees_with_jd)},
-            "rag_enhanced": true,
-            "jd_analysis_impact": "How JD analysis improved the recommendations"
-        }}
-        """
-        
-        # Step 7: Call AI for final recommendations
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are an HR expert specializing in talent matching using RAG-enhanced analysis of Job Descriptions. Return ONLY valid JSON."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2,
-            max_tokens=2000,
-            timeout=30
-        )
-        
-        response_text = response.choices[0].message.content.strip()
-        ai_recommendations = safe_json_parse(response_text, {})
-        
+        # Step 3: Prepare final output
         processing_time = time.time() - start_time
         
-        # Step 8: Update task with enhanced recommendations
+        # Update task with final recommendations
         strategic_meta = task.get('strategic_metadata', {})
-        strategic_meta['ai_recommendations'] = ai_recommendations.get('recommendations', [])
-        strategic_meta['employee_recommendations_available'] = True
-        strategic_meta['recommendations_analysis'] = ai_recommendations.get('analysis_summary', '')
+        strategic_meta['ai_recommendations'] = rag_recommendations
+        strategic_meta['employee_recommendations_available'] = bool(rag_recommendations)
+        strategic_meta['recommendations_analysis'] = f"Corrected RAG analysis - {len(rag_recommendations)} recommendations"
         strategic_meta['recommendations_generated_at'] = datetime.utcnow().isoformat()
-        strategic_meta['total_employees_considered'] = ai_recommendations.get('total_employees_considered', len(employees))
         strategic_meta['rag_enhanced'] = True
-        strategic_meta['employees_with_jd'] = ai_recommendations.get('employees_with_jd', len(employees_with_jd))
-        strategic_meta['rag_details'] = rag_details
-        strategic_meta['jd_analysis_impact'] = ai_recommendations.get('jd_analysis_impact', 'JD documents provided additional context for matching')
+        strategic_meta['recommendation_count'] = len(rag_recommendations)
+        strategic_meta['assignment_strategy'] = "role_first_then_department"
         
         update_result = supabase.table("action_plans").update({
             "strategic_metadata": strategic_meta
         }).eq("id", task['id']).execute()
         
-        # Step 9: Final update to AI meta
+        # Step 4: Final update
         final_update = {
-            "prompt": prompt,
-            "raw_response": response_text,
             "output_json": {
                 "status": "completed",
                 "progress": 100,
                 "task_id": task['id'],
-                "recommendations_generated": len(strategic_meta['ai_recommendations']),
+                "recommendations_generated": len(rag_recommendations),
                 "processing_time": processing_time,
-                "analysis_summary": strategic_meta['recommendations_analysis'],
                 "rag_enhanced": True,
-                "employees_with_jd": strategic_meta['employees_with_jd'],
-                "jd_analysis_impact": strategic_meta['jd_analysis_impact'],
-                "top_recommendation": strategic_meta['ai_recommendations'][0] if strategic_meta['ai_recommendations'] else None
+                "recommendation_count": len(rag_recommendations),
+                "assignment_strategy": "role_first_then_department",
+                "role_based_assignments": len([r for r in rag_recommendations if r.get('role_based_assignment')])
             },
-            "confidence": 0.90,
             "updated_at": datetime.utcnow().isoformat()
         }
         supabase.table("ai_meta").update(final_update).eq("id", ai_meta_id).execute()
         
-        print(f"✅ RAG-enhanced employee recommendations completed in {processing_time:.2f}s")
-        print(f"📊 Generated {len(strategic_meta['ai_recommendations'])} recommendations")
-        print(f"📄 Analyzed {strategic_meta['employees_with_jd']} JD documents")
+        print(f"✅ CORRECTED RAG recommendations completed in {processing_time:.2f}s")
+        print(f"📊 Final recommendations: {len(rag_recommendations)}")
+        print(f"🎯 Role-based assignments: {len([r for r in rag_recommendations if r.get('role_based_assignment')])}")
         
         return True
         
     except Exception as e:
-        error_msg = f"Error in RAG employee recommendations: {str(e)}"
+        error_msg = f"Error in corrected RAG employee recommendations: {str(e)}"
         print(f"❌ {error_msg}")
+        import traceback
+        traceback.print_exc()
         
-        # Fallback to standard recommendations
-        try:
-            print("🔄 Falling back to standard recommendations...")
-            return process_employee_recommendations_for_task(task, employees, ai_meta_id)
-        except Exception as fallback_error:
-            print(f"❌ Fallback also failed: {fallback_error}")
-            # Update AI meta with error
-            try:
-                supabase.table("ai_meta").update({
-                    "output_json": {
-                        "status": "error",
-                        "error": error_msg,
-                        "fallback_error": str(fallback_error),
-                        "progress": 0
-                    },
-                    "updated_at": datetime.utcnow().isoformat()
-                }).eq("id", ai_meta_id).execute()
-            except Exception as update_error:
-                print(f"❌ Failed to update AI meta with error: {update_error}")
-            return False
-        
+        return False
 
-# Update the route to use enhanced RAG method
+
+def calculate_advanced_fit_score(task_description, employee_role, employee_department, 
+                               employee_skills, employee_experience, jd_text=None):
+    """
+    ADVANCED scoring system analyzing multiple criteria
+    """
+    task_lower = task_description.lower()
+    score = 0
+    
+    # 1. ROLE ALIGNMENT (40 points max)
+    role_score = calculate_role_alignment_score(task_lower, employee_role)
+    score += role_score
+    
+    # 2. DEPARTMENT ALIGNMENT (20 points max)
+    dept_score = calculate_department_alignment_score(task_lower, employee_department)
+    score += dept_score
+    
+    # 3. SKILLS MATCHING (20 points max)
+    skills_score = calculate_skills_matching_score(task_lower, employee_skills)
+    score += skills_score
+    
+    # 4. JD CONTENT ANALYSIS (15 points max) - Only if JD available
+    jd_score = 0
+    if jd_text:
+        jd_score = calculate_jd_analysis_score(task_lower, jd_text)
+    score += jd_score
+    
+    # 5. EXPERIENCE BONUS (5 points max)
+    exp_score = min(employee_experience, 5)
+    score += exp_score
+    
+    return min(score, 100)
+
+def calculate_role_alignment_score(task_lower, employee_role):
+    """Calculate role alignment score (0-40 points)"""
+    if not employee_role:
+        return 0
+        
+    employee_role_lower = employee_role.lower()
+    
+    # Exact role match in task description
+    if employee_role_lower in task_lower:
+        return 40
+    
+    # Partial role match
+    role_keywords = employee_role_lower.split()
+    keyword_matches = sum(1 for keyword in role_keywords if len(keyword) > 3 and keyword in task_lower)
+    
+    if keyword_matches >= 2:
+        return 30
+    elif keyword_matches >= 1:
+        return 20
+    
+    return 10  # Base score for having a role
+
+def calculate_department_alignment_score(task_lower, employee_department):
+    """Calculate department alignment score (0-20 points)"""
+    if not employee_department:
+        return 0
+        
+    dept_lower = employee_department.lower()
+    
+    # Department mapping to task keywords
+    department_keywords = {
+        "supply chain": ["logistics", "shipment", "inventory", "customs", "supplier", "stock", "delivery"],
+        "sales": ["client", "deal", "agreement", "invoice", "customer", "sales", "revenue"],
+        "product": ["product", "quality", "specification", "technical", "testing", "validation"],
+        "finance": ["payment", "bank", "tax", "financial", "currency", "accounting", "budget"],
+        "operations": ["coordinate", "arrange", "manage", "dispatch", "clearance", "transport"]
+    }
+    
+    # Check if department matches task keywords
+    for dept, keywords in department_keywords.items():
+        if dept in dept_lower:
+            matching_keywords = sum(1 for keyword in keywords if keyword in task_lower)
+            return min(matching_keywords * 5, 20)  # 5 points per matching keyword, max 20
+    
+    return 5  # Base score for having a department
+
+def calculate_skills_matching_score(task_lower, employee_skills):
+    """Calculate skills matching score (0-20 points)"""
+    if not employee_skills or not isinstance(employee_skills, list):
+        return 0
+    
+    # Common task-related skills
+    task_skills = [
+        "management", "coordination", "analysis", "planning", "communication",
+        "negotiation", "documentation", "processing", "validation", "testing",
+        "logistics", "finance", "sales", "product", "quality", "technical"
+    ]
+    
+    # Check for skill matches
+    skill_matches = 0
+    for skill in employee_skills[:10]:  # Check first 10 skills
+        skill_lower = str(skill).lower()
+        
+        # Direct skill match in task
+        if skill_lower in task_lower:
+            skill_matches += 2
+        # Partial skill match
+        elif any(task_skill in skill_lower for task_skill in task_skills):
+            skill_matches += 1
+    
+    return min(skill_matches * 4, 20)  # 4 points per strong match, 2 points per partial
+
+def calculate_jd_analysis_score(task_lower, jd_text):
+    """Calculate JD content analysis score (0-15 points)"""
+    jd_lower = jd_text.lower()
+    
+    # Task-specific keywords to look for in JD
+    task_keywords = [
+        "manage", "coordinate", "lead", "process", "arrange", "finalize",
+        "handle", "execute", "implement", "oversee", "supervise", "analyze",
+        "develop", "create", "build", "design", "plan", "organize"
+    ]
+    
+    # Count matching keywords between task and JD
+    matching_keywords = sum(1 for keyword in task_keywords if keyword in task_lower and keyword in jd_lower)
+    
+    return min(matching_keywords * 3, 15)  # 3 points per matching keyword
+
+def get_advanced_qualifications(task_description, employee, jd_text=None):
+    """Generate advanced qualifications based on multiple criteria"""
+    task_lower = task_description.lower()
+    qualifications = []
+    
+    # Role-based qualification
+    employee_role = employee.get('role') or ''
+    if employee_role:
+        qualifications.append(f"Role: {employee_role}")
+    
+    # Department qualification
+    department = employee.get('department') or ''
+    if department:
+        qualifications.append(f"Department: {department}")
+    
+    # Skills qualification (top 3 relevant skills)
+    skills = employee.get('skills', [])
+    if skills and isinstance(skills, list):
+        relevant_skills = []
+        for skill in skills[:5]:  # Check first 5 skills
+            skill_lower = str(skill).lower()
+            if any(task_word in skill_lower for task_word in task_lower.split()):
+                relevant_skills.append(skill)
+        
+        if relevant_skills:
+            qualifications.append(f"Relevant Skills: {', '.join(relevant_skills[:3])}")
+    
+    # Experience qualification
+    experience = employee.get('experience_years', 0)
+    if experience > 0:
+        qualifications.append(f"Experience: {experience} years")
+    
+    # JD-based qualification (if available)
+    if jd_text:
+        jd_lower = jd_text.lower()
+        task_words = set(task_lower.split())
+        jd_words = set(jd_lower.split())
+        common_words = task_words.intersection(jd_words)
+        
+        if len(common_words) >= 3:
+            qualifications.append(f"JD Alignment: {len(common_words)} matching terms")
+    
+    return qualifications[:5]  # Limit to 5 qualifications
+
+def generate_advanced_reason(employee, fit_score, task_description, jd_available):
+    """Generate detailed reasoning for advanced analysis"""
+    base_reason = f"{employee['name']} ({employee.get('role', 'N/A')}) - {fit_score}% task alignment"
+    
+    if jd_available:
+        return f"{base_reason} (JD-enhanced analysis with skills and experience matching)"
+    else:
+        return f"{base_reason} (role, department, and skills analysis)"
+    
+
+def get_key_qualifications(task_description, employee, jd_text=None):
+    """
+    Extract key qualifications based on role, department, and JD with null safety
+    """
+    task_lower = task_description.lower()
+    qualifications = []
+    
+    # Role-based qualifications
+    employee_role = employee.get('role') or ''
+    if employee_role:
+        qualifications.append(f"Role: {employee_role}")
+    
+    # Department-based qualifications
+    department = employee.get('department') or ''
+    if department:
+        qualifications.append(f"Department: {department}")
+    
+    # JD-based qualifications (if available)
+    if jd_text:
+        jd_lower = jd_text.lower()
+        
+        # Look for matching keywords in JD
+        matched_keywords = []
+        task_keywords = ['manage', 'develop', 'create', 'implement', 'coordinate', 'lead']
+        
+        for keyword in task_keywords:
+            if keyword in task_lower and keyword in jd_lower:
+                matched_keywords.append(keyword)
+        
+        if matched_keywords:
+            qualifications.append(f"JD keywords: {', '.join(matched_keywords[:3])}")
+    
+    return qualifications[:5]  # Limit to 5 qualification
+
+def generate_simplified_reason(employee, jd_available, fit_score):
+    """
+    Generate simplified reasoning without confidence
+    """
+    base_reason = f"{employee['name']} ({employee.get('role', 'N/A')}) - {fit_score}% match"
+    
+    if jd_available:
+        return f"{base_reason} (JD-enhanced analysis)"
+    else:
+        return f"{base_reason} (role and department matching)"
+
+
+def ultra_fast_fallback(task_description, employees):
+    """
+    Fixed ultra-fast fallback with proper None handling
+    """
+    try:
+        if not task_description:
+            return []
+            
+        task_lower = task_description.lower()
+        recommendations = []
+        
+        for employee in employees[:15]:  # Check more employees
+            try:
+                # Safe handling with proper None checks
+                employee_name = employee.get('name', 'Unknown')
+                employee_role = employee.get('role') or ''
+                employee_department = employee.get('department') or ''
+                
+                # Skip if no role information
+                if not employee_role:
+                    continue
+                    
+                score = 0
+                
+                # Simple role matching
+                if employee_role.lower() in task_lower:
+                    score += 60
+                
+                # Simple department matching
+                if employee_department and employee_department.lower() in task_lower:
+                    score += 30
+                
+                # Experience bonus
+                experience = employee.get('experience_years', 0)
+                score += min(experience, 10)
+                
+                if score >= 40:
+                    recommendations.append({
+                        'employee_id': employee['id'],
+                        'employee_name': employee_name,
+                        'employee_role': employee_role,
+                        'employee_department': employee_department,
+                        'fit_score': score,
+                        'key_qualifications': [
+                            f"Role: {employee_role}",
+                            f"Department: {employee_department or 'N/A'}"
+                        ],
+                        'reason': "Fallback matching based on role and department",
+                        'jd_available': False,
+                        'rag_enhanced': False,
+                        'assignment_type': 'fallback'
+                    })
+                    
+            except Exception as emp_error:
+                print(f"⚠️ Error in fallback for employee {employee.get('name', 'Unknown')}: {emp_error}")
+                continue
+        
+        # Apply same fit_score logic
+        sorted_recs = sorted(recommendations, key=lambda x: x['fit_score'], reverse=True)
+        if not sorted_recs:
+            return []
+        
+        top_score = sorted_recs[0]['fit_score']
+        
+        if top_score > 90:
+            return sorted_recs[:1]
+        elif top_score >= 80:
+            return sorted_recs[:min(2, len(sorted_recs))]
+        else:
+            return sorted_recs[:min(3, len(sorted_recs))]
+            
+    except Exception as e:
+        print(f"❌ Ultra-fast fallback error: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+# Update the route to use corrected RAG method
 @task_bp.route('/api/tasks/<task_id>/generate-rag-recommendations', methods=['POST'])
 @token_required
 @admin_required
 def generate_rag_employee_recommendations(task_id):
-    """Generate RAG-enhanced employee recommendations for a specific task"""
+    """Generate CORRECTED RAG-enhanced employee recommendations for a specific task"""
     try:
         supabase = get_supabase_client()
         
@@ -2911,7 +3759,7 @@ def generate_rag_employee_recommendations(task_id):
         
         # Get all active employees with JD links
         employees_result = supabase.table("employees").select(
-            "id, name, role, title, skills, experience_years, department, strengths,job_description_url"
+            "id, name, role, title, department, job_description_url"
         ).eq("is_active", True).execute()
         
         employees = employees_result.data if employees_result.data else []
@@ -2921,22 +3769,23 @@ def generate_rag_employee_recommendations(task_id):
         
         # Create AI meta record for RAG recommendations
         ai_meta_data = {
-            "source": "rag-employee-recommendations",
-            "model": "gpt-3.5-turbo",
+            "source": "corrected-rag-recommendations",
+            "model": "role-first-then-department",
             "input_json": {
                 "task_id": task_id,
                 "task_description": task['task_description'],
                 "employees_count": len(employees),
                 "employees_with_jd": len([emp for emp in employees if emp.get('job_description_url')]),
                 "status": "starting",
-                "rag_enhanced": True
+                "corrected_rag": True,
+                "assignment_strategy": "role_first_then_department"
             },
             "output_json": {
                 "status": "processing",
                 "progress": 0,
-                "current_activity": "Starting RAG-enhanced employee recommendations",
+                "current_activity": "Starting corrected RAG employee recommendations",
                 "task_id": task_id,
-                "rag_enhanced": True
+                "corrected_rag": True
             },
             "created_at": datetime.utcnow().isoformat()
         }
@@ -2947,9 +3796,9 @@ def generate_rag_employee_recommendations(task_id):
         
         ai_meta_id = ai_meta_result.data[0]['id']
         
-        # Start RAG-enhanced recommendation process in background
+        # Start CORRECTED RAG-enhanced recommendation process in background
         threading.Thread(
-            target=enhanced_process_employee_recommendations_for_task,
+            target=corrected_process_employee_recommendations_for_task,  # CHANGED THIS LINE
             args=(task, employees, ai_meta_id),
             daemon=True
         ).start()
@@ -2957,16 +3806,17 @@ def generate_rag_employee_recommendations(task_id):
         return jsonify({
             'success': True, 
             'ai_meta_id': ai_meta_id,
-            'message': 'RAG-enhanced employee recommendations processing started',
+            'message': 'CORRECTED RAG employee recommendations processing started',  # UPDATED MESSAGE
             'task_id': task_id,
-            'rag_enhanced': True,
-            'employees_count': len(employees),
-            'employees_with_jd': len([emp for emp in employees if emp.get('job_description_url')])
+            'corrected_rag': True,  # UPDATED FLAG
+            'assignment_strategy': 'role_first_then_department',  # ADDED STRATEGY
+            'employees_count': len(employees)
         })
         
     except Exception as e:
-        error_msg = f"Error starting RAG employee recommendations: {str(e)}"
+        error_msg = f"Error starting CORRECTED RAG employee recommendations: {str(e)}"  # UPDATED ERROR
         print(f"❌ {error_msg}")
+        return jsonify({'success': False, 'error': error_msg}), 500
         return jsonify({'success': False, 'error': error_msg}), 500
 
 @task_bp.route('/api/health/tasks', methods=['GET'])

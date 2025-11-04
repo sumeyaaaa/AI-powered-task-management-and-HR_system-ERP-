@@ -370,7 +370,26 @@ class TaskManager:
             return response.json()
         except Exception as e:
             return {'success': False, 'error': str(e)}
-    
+    def get_tasks_filtered(self, objective_id=None, priority=None, created_date=None):
+        """Get tasks with objective filtering - NEW METHOD"""
+        try:
+            params = {}
+            if objective_id and objective_id != 'all':
+                params['objective_id'] = objective_id
+            if priority and priority != 'All':
+                params['priority'] = priority
+            if created_date:
+                params['created_date'] = created_date.isoformat()
+            
+            response = requests.get(
+                f"{self.backend_url}/api/tasks/filter-by-objective",
+                params=params,
+                headers=self.get_auth_headers(),
+                timeout=15
+            )
+            return self._safe_json_response(response)
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
 
 @st.cache_data(ttl=300)
 def get_task_manager(token=None):
@@ -580,12 +599,15 @@ def show_classified_task_card(task, index, task_manager):
     with st.container():
         st.markdown("---")
         
-        # Main card layout
-        col1, col2 = st.columns([4, 1])
+        col1, col2 = st.columns([3, 1])
         
         with col1:
-            st.subheader(f"📋 Task {index + 1}: {task['task_description']}")
+            st.write(f"**Description:** {task.get('task_description', 'No description')}")
             
+            # Show objective information with pre-number
+            objective_title = task.get('objectives', {}).get('title', 'No Goal')
+            objective_pre_number = task.get('objectives', {}).get('pre_number', 'N/A')
+            st.write(f"**Objective:** {objective_title} (Pre-number: {objective_pre_number})")
             # Task details in a compact layout
             col1a, col1b, col1c = st.columns(3)
             with col1a:
@@ -639,7 +661,7 @@ def show_classified_task_card(task, index, task_manager):
                 
             elif has_recommendations:
                 recommendations_generated_at = strategic_meta.get('recommendations_generated_at')
-                button_label = "🔍 View RAG Recommendations"
+                button_label = "🔍 View Employee Recommendations"
                     
                 if recommendations_generated_at:
                     try:
@@ -652,7 +674,7 @@ def show_classified_task_card(task, index, task_manager):
                         else:
                             time_text = f"({time_diff.seconds // 60}m ago)"
                         
-                        button_label = f"🔍 View RAG Recommendations {time_text}"
+                        button_label = f"🔍 View Employee Recommendations {time_text}"
                     except:
                         pass
                         
@@ -664,7 +686,7 @@ def show_classified_task_card(task, index, task_manager):
                         state['show_edit_form'] = False
                         st.rerun()
                 with col_rag2:
-                    if st.button("🔄 Refresh RAG", key=f"rag_refresh_{task['id']}_{index}", use_container_width=True):
+                    if st.button("🔄 Refresh Employee recommendation", key=f"rag_refresh_{task['id']}_{index}", use_container_width=True):
                         state['rag_loading'] = True
                         state['rag_ai_meta_id'] = None
                         st.rerun()
@@ -672,14 +694,14 @@ def show_classified_task_card(task, index, task_manager):
             elif recommendations_failed:
                 col_rag1, col_rag2 = st.columns(2)
                 with col_rag1:
-                    st.button("❌ RAG Recommendations Failed", key=f"failed_{task['id']}_{index}", use_container_width=True, disabled=True)
+                    st.button("❌ Employee Recommendations Failed", key=f"failed_{task['id']}_{index}", use_container_width=True, disabled=True)
                 with col_rag2:
-                    if st.button("🔍 Retry RAG", key=f"try_rag_{task['id']}_{index}", use_container_width=True):
+                    if st.button("🔍 Retry Employee recommendation", key=f"try_rag_{task['id']}_{index}", use_container_width=True):
                         state['rag_loading'] = True
                         state['rag_ai_meta_id'] = None
                         st.rerun()
             else:
-                if st.button("🔍 Get RAG Recommendations", key=f"get_rag_{task['id']}_{index}", use_container_width=True):
+                if st.button("🔍 Get Employee Recommendations", key=f"get_rag_{task['id']}_{index}", use_container_width=True):
                     state['rag_loading'] = True
                     state['rag_ai_meta_id'] = None
                     st.rerun()
@@ -729,135 +751,235 @@ def show_classified_task_card(task, index, task_manager):
         st.markdown("---")
         show_employee_recommendations(task, task_manager, task_key)
 
+def show_admin_task_detail_with_attachments(task):
+    """Show task details for admin with attachments and notes tabs"""
+    task_manager = get_task_manager()
+    
+    # Create tabs for task details, attachments, and notes
+    tab1, tab2, tab3 = st.tabs(["📋 Task Details", "📎 Task Update", "📝 Notes"])
+    
+    with tab1:
+        show_admin_task_details_tab(task, task_manager)
+    
+    with tab2:
+        show_attachments_tab(task, task_manager)
+    
+    with tab3:
+        show_notes_tab(task, task_manager)
+
+def show_admin_task_details_tab(task, task_manager):
+    """Show task details tab for admin with enhanced RAG information"""
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.write(f"**Description:** {task.get('task_description', 'No description')}")
+        
+        # Show assigned employees - FIXED: Null-safe access
+        assigned_employees = []
+        
+        # Primary assigned employee
+        primary_employee = task.get('employees')
+        if isinstance(primary_employee, dict) and primary_employee.get('name'):
+            assigned_employees.append(primary_employee['name'])
+        
+        # Handle multiple assignees
+        if task.get('assigned_to_multiple'):
+            from employee_management import get_all_employees
+            all_employees = get_all_employees()
+            for emp_id in task['assigned_to_multiple']:
+                emp = next((e for e in all_employees if e['id'] == emp_id), None)
+                if emp and emp.get('name') and emp['name'] not in assigned_employees:
+                    assigned_employees.append(emp['name'])
+        
+        if assigned_employees:
+            st.write(f"**Assigned to:** {', '.join(assigned_employees)}")
+        else:
+            st.write("**Assigned to:** Unassigned")
+        
+        # FIXED: Null-safe objectives access
+        objectives_data = task.get('objectives')
+        goal_title = 'No Goal'
+        if isinstance(objectives_data, dict):
+            goal_title = objectives_data.get('title', 'No Goal')
+        st.write(f"**Goal:** {goal_title}")
+        
+        st.write(f"**Priority:** {task.get('priority', 'medium').title()}")
+        
+        # FIXED: Safe due date access
+        due_date = task.get('due_date', 'Not set')
+        if due_date and due_date != 'Not set':
+            st.write(f"**Deadline:** {due_date[:10]}")
+        else:
+            st.write(f"**Deadline:** Not set")
+        
+        # Enhanced status display
+        status = task.get('status', 'not_started')
+        status_display = status.replace('_', ' ').title()
+        if status == 'waiting':
+            st.warning(f"**Status:** ⏳ {status_display} (Waiting for prerequisites)")
+        elif status == 'completed':
+            st.success(f"**Status:** ✅ {status_display}")
+        elif status == 'in_progress':
+            st.info(f"**Status:** 🔄 {status_display}")
+        elif status == 'ai_suggested':
+            st.info(f"**Status:** 🤖 {status_display} (AI Suggested - Needs Review)")
+        else:
+            st.write(f"**Status:** {status_display}")
+        
+        # Progress bar
+        progress = task.get('completion_percentage', 0)
+        st.progress(progress / 100)
+        st.write(f"**Progress:** {progress}%")
+        
+        # Enhanced AI recommendations display with RAG info - FIXED: Null-safe access
+        strategic_meta = task.get('strategic_metadata', {})
+        if strategic_meta.get('employee_recommendations_available'):
+            with st.expander("👥 AI Employee Recommendations", expanded=False):
+                # Show RAG enhancement status
+                if strategic_meta.get('rag_enhanced'):
+                    st.success("🔍 **RAG-Enhanced Analysis**")
+                    st.write(f"JD Documents Analyzed: {strategic_meta.get('employees_with_jd', 0)}")
+                
+                recommendations = strategic_meta.get('ai_recommendations', [])
+                for rec in recommendations[:3]:  # Show top 3
+                    st.write(f"**{rec.get('employee_name')}** - Fit: {rec.get('fit_score')}%")
+                    if rec.get('rag_enhanced_score'):
+                        st.write(f"  RAG Score: {rec.get('rag_enhanced_score')}%")
+                    st.write(f"  Reason: {rec.get('reason', 'No reason provided')[:100]}...")
+        
+        # Show the 5 strategic fields
+        show_other_details_expander(task, strategic_meta)
+    
+    with col2:
+        # Use session state to track edit mode for admin task editing
+        admin_edit_key = f"admin_edit_{task['id']}"
+        
+        if admin_edit_key not in st.session_state:
+            st.session_state[admin_edit_key] = {
+                'editing': False,
+                'status': task.get('status', 'pending'),
+                'priority': task.get('priority', 'medium'),
+                'progress': task.get('completion_percentage', 0)
+            }
+        
+        if st.session_state[admin_edit_key]['editing']:
+            show_admin_edit_form(task, task_manager, admin_edit_key)
+        else:
+            if st.button("✏️ Edit Task", key=f"admin_edit_btn_{task['id']}", use_container_width=True):
+                st.session_state[admin_edit_key]['editing'] = True
+                st.rerun()
+
 def show_other_details_expander(task, strategic_meta):
-    """Show additional strategic details in an expander"""
+    """Show the 5 strategic fields and objective pre-number with null safety - FIXED VERSION"""
     
-    # Get the AI meta data from various sources
-    output_json = strategic_meta.get('output_json', {})
-    ai_meta_data = strategic_meta.get('strategic_analysis', {})
+    # Get objective pre_number if available - FIXED: Null-safe access
+    objectives_data = task.get('objectives')
+    objective_pre_number = 'N/A'
+    if isinstance(objectives_data, dict):
+        objective_pre_number = objectives_data.get('pre_number', 'N/A')
     
-    # Collect all the strategic information
-    sections = []
+    # The 5 strategic fields - FIXED: Use direct access to strategic_meta
+    strategic_fields = [
+        ("🎯", "Context", strategic_meta.get('context', '')),
+        ("🎯", "Objective", strategic_meta.get('objective', '')),
+        ("🔄", "Process", strategic_meta.get('process', '')),
+        ("📦", "Delivery", strategic_meta.get('delivery', '')),
+        ("📊", "Reporting Requirements", strategic_meta.get('reporting_requirements', ''))
+    ]
     
-    # From output_json (direct AI response)
-    if output_json and isinstance(output_json, dict):
-        # WIG Alignment
-        if output_json.get('wig_alignment'):
-            sections.append(("🎯", "WIG Alignment", output_json['wig_alignment']))
-        
-        # Strategic Analysis
-        if output_json.get('strategic_analysis'):
-            sections.append(("📈", "Strategic Analysis", output_json['strategic_analysis']))
-        
-        # Validation Score
-        if output_json.get('validation_score'):
-            sections.append(("✅", "Validation Score", output_json['validation_score']))
-        
-        # Q4 Execution Context
-        if output_json.get('q4_execution_context'):
-            sections.append(("📅", "Q4 Execution Context", output_json['q4_execution_context']))
-        
-        # Tasks Generated
-        if output_json.get('tasks_generated'):
-            sections.append(("📋", "Tasks Generated", f"{output_json['tasks_generated']} tasks"))
+    # Check if we have any content to display
+    has_content = False
+    for _, _, content in strategic_fields:
+        if content and content.strip():
+            has_content = True
+            break
     
-    # From strategic_analysis (nested analysis)
-    if ai_meta_data and isinstance(ai_meta_data, dict):
-        # Strategic Alignment
-        if ai_meta_data.get('strategic_alignment'):
-            sections.append(("🔗", "Strategic Alignment", ai_meta_data['strategic_alignment']))
-        
-        # Q4 Execution Context (from strategic_analysis)
-        if ai_meta_data.get('q4_execution_context') and not any("Q4 Execution" in title for _, title, _ in sections):
-            sections.append(("📅", "Q4 Execution", ai_meta_data['q4_execution_context']))
-        
-        # Criteria Analysis
-        if ai_meta_data.get('criteria_analysis') and isinstance(ai_meta_data['criteria_analysis'], dict):
-            criteria_text = ""
-            for criterion, analysis in ai_meta_data['criteria_analysis'].items():
-                if analysis and analysis.strip():
-                    criteria_text += f"• **{criterion.replace('_', ' ').title()}:** {analysis}\n"
-            if criteria_text:
-                sections.append(("📊", "Criteria Analysis", criteria_text))
+    # FIX: Safely handle strategic_analysis - it might be a string or dict
+    strategic_analysis = strategic_meta.get('strategic_analysis', {})
     
-    # From task's strategic_metadata
-    # Strategic Phase
-    if strategic_meta.get('strategic_phase'):
-        sections.append(("🔄", "Strategic Phase", strategic_meta['strategic_phase']))
+    # If strategic_analysis is a string, try to parse it as JSON
+    if isinstance(strategic_analysis, str):
+        try:
+            import json
+            strategic_analysis = json.loads(strategic_analysis)
+        except:
+            strategic_analysis = {}
+    # If it's not a dict, make it an empty dict
+    elif not isinstance(strategic_analysis, dict):
+        strategic_analysis = {}
     
-    # Key Stakeholders
-    if strategic_meta.get('key_stakeholders'):
-        stakeholders = strategic_meta['key_stakeholders']
-        if isinstance(stakeholders, list) and stakeholders:
-            sections.append(("👥", "Key Stakeholders", ", ".join(stakeholders)))
+    if strategic_analysis:
+        # Check if strategic_analysis has the 5 fields
+        analysis_fields = [
+            strategic_analysis.get('context', ''),
+            strategic_analysis.get('objective', ''),
+            strategic_analysis.get('process', ''),
+            strategic_analysis.get('delivery', ''),
+            strategic_analysis.get('reporting_requirements', '')
+        ]
+        if any(field and field.strip() for field in analysis_fields):
+            has_content = True
     
-    # Potential Bottlenecks
-    if strategic_meta.get('potential_bottlenecks'):
-        bottlenecks = strategic_meta['potential_bottlenecks']
-        if isinstance(bottlenecks, list) and bottlenecks:
-            sections.append(("⚠️", "Potential Bottlenecks", " • ".join(bottlenecks)))
-    
-    # Resource Requirements
-    if strategic_meta.get('resource_requirements'):
-        resources = strategic_meta['resource_requirements']
-        if isinstance(resources, list) and resources:
-            sections.append(("🛠️", "Resource Requirements", " • ".join(resources)))
-    
-    # RAG Information
-    if strategic_meta.get('rag_enhanced'):
-        sections.append(("🔍", "RAG Enhanced", "JD documents analyzed for better matching"))
-    
-    if strategic_meta.get('employees_with_jd'):
-        sections.append(("📄", "JD Analysis", f"Analyzed {strategic_meta['employees_with_jd']} employee JD documents"))
-    
-    # From the task itself (for backward compatibility)
-    if task.get('strategic_outcome'):
-        sections.append(("🎯", "Strategic Outcome", task['strategic_outcome']))
-    
-    # Success Metrics (if available in task)
-    if task.get('success_metrics'):
-        metrics = task['success_metrics']
-        if isinstance(metrics, list) and metrics:
-            sections.append(("📊", "Success Metrics", " • ".join(metrics)))
-    
-    # Show the expander only if there are details to display
-    if sections:
-        with st.expander("📊 Other Details", expanded=False):
-            for icon, title, content in sections:
-                st.write(f"{icon} **{title}**")
+    if has_content or objective_pre_number != 'N/A':
+        with st.expander("📊 Strategic Details", expanded=False):
+            # Show objective pre-number at the top
+            st.write(f"**Objective Pre-number:** {objective_pre_number}")
+            st.markdown("---")
+            
+            # First try to show from strategic_analysis (AI-generated data)
+            if strategic_analysis and isinstance(strategic_analysis, dict):
+                st.write("### 🤖 AI Strategic Analysis")
+                analysis_fields = [
+                    ("🎯", "Context", strategic_analysis.get('context', '')),
+                    ("🎯", "Objective", strategic_analysis.get('objective', '')),
+                    ("🔄", "Process", strategic_analysis.get('process', '')),
+                    ("📦", "Delivery", strategic_analysis.get('delivery', '')),
+                    ("📊", "Reporting Requirements", strategic_analysis.get('reporting_requirements', ''))
+                ]
                 
-                if isinstance(content, list):
-                    # Handle list items with bullet points
-                    for item in content:
-                        st.write(f"   • {item}")
-                elif isinstance(content, dict):
-                    # Handle nested dictionaries
-                    for key, value in content.items():
-                        if value and value not in ([], {}, ""):
-                            formatted_key = key.replace('_', ' ').title()
-                            st.write(f"   - **{formatted_key}:** {value}")
-                else:
-                    # Handle string content with proper formatting
-                    content_str = str(content)
-                    if len(content_str) > 200:
-                        # For long text, use a scrollable area
-                        st.text_area("", value=content_str, height=100, key=f"details_{title}_{task['id']}", label_visibility="collapsed")
-                    else:
-                        # For shorter text, just display it
-                        st.write(f"   {content_str}")
+                for icon, title, content in analysis_fields:
+                    if content and content.strip():
+                        st.write(f"{icon} **{title}**")
+                        if len(content) > 300:
+                            # Use text area for long content
+                            st.text_area("", value=content, height=120, key=f"ai_{title}_{task['id']}", label_visibility="collapsed")
+                        else:
+                            st.write(content)
+                        st.write("")  # Add spacing
                 
-                st.write("")  # Add spacing between sections
+                # Show additional strategic analysis info if available
+                if strategic_analysis.get('validation_score'):
+                    st.write(f"**Validation Score:** {strategic_analysis['validation_score']}")
+                if strategic_analysis.get('q4_execution_context'):
+                    st.write(f"**Execution Context:** {strategic_analysis['q4_execution_context']}")
+                if strategic_analysis.get('process_applied'):
+                    st.write(f"**Process Applied:** {strategic_analysis['process_applied']}")
+                if strategic_analysis.get('goal_type'):
+                    st.write(f"**Goal Type:** {strategic_analysis['goal_type']}")
+            
+            # Then show from direct strategic_meta fields (fallback)
+            elif any(content and content.strip() for _, _, content in strategic_fields):
+                st.write("### 📋 Strategic Details")
+                for icon, title, content in strategic_fields:
+                    if content and content.strip():
+                        st.write(f"{icon} **{title}**")
+                        if len(content) > 300:
+                            # Use text area for long content
+                            st.text_area("", value=content, height=120, key=f"{title}_{task['id']}", label_visibility="collapsed")
+                        else:
+                            st.write(content)
+                        st.write("")  # Add spacing
     else:
         # Optional: Show a message if no details available
-        with st.expander("📊 Other Details", expanded=False):
-            st.info("No additional strategic details available for this task.")      
+        with st.expander("📊 Strategic Details", expanded=False):
+            st.info("No additional strategic details available for this task.")
 
 def show_rag_loading_state_main(task, task_manager, task_key):
     """Show RAG loading state in the main task area - FIXED VERSION"""
     state = st.session_state[task_key]
     
     # Show loading UI in the main task area
-    st.button("🔍 RAG Analysis in Progress...", 
+    st.button("🔍 Employee Recommendation in Progress...", 
              key=f"rag_loading_main_{task['id']}", use_container_width=True, disabled=True)
     
     # Check if we have an AI meta ID for tracking
@@ -1094,18 +1216,43 @@ def show_edit_task_form(task, task_manager, task_key):
     
     from employee_management import get_all_employees
     employees = get_all_employees()
-    employee_options = {f"{e['id']} - {e['name']}": e['id'] for e in employees if e.get('is_active', True)}
-    default_employee = None
+    
+    # UPDATED: Remove ID from display, show name and role only
+    employee_options = {f"{e['name']} ({e.get('role', 'No Role')})": e['id'] for e in employees if e.get('is_active', True)}
+    
+    # UPDATED: Find default employee without ID in display
+    default_employee_display = None
     strategic_meta = task.get('strategic_metadata', {})
     if strategic_meta.get('ai_recommendations'):
         emp_id = strategic_meta['ai_recommendations'][0].get('employee_id')
-        for key, value in employee_options.items():
-            if value == emp_id:
-                default_employee = key
+        # Find the employee by ID to get their display name
+        for emp in employees:
+            if emp['id'] == emp_id:
+                default_employee_display = f"{emp['name']} ({emp.get('role', 'No Role')})"
                 break
     
-    assigned_employee = st.selectbox("Assign to", options=list(employee_options.keys()), 
-                                    index=list(employee_options.keys()).index(default_employee) if default_employee else 0)
+    # UPDATED: Get current assigned employee for default selection
+    current_employee_id = task.get('assigned_to')
+    current_employee_display = None
+    if current_employee_id:
+        for emp in employees:
+            if emp['id'] == current_employee_id:
+                current_employee_display = f"{emp['name']} ({emp.get('role', 'No Role')})"
+                break
+    
+    # UPDATED: Use current employee as default, then AI recommendation as fallback
+    default_display = current_employee_display or default_employee_display
+    
+    # UPDATED: Set the default index
+    default_index = 0
+    if default_display and default_display in employee_options:
+        default_index = list(employee_options.keys()).index(default_display)
+    
+    assigned_employee = st.selectbox(
+        "Assign to", 
+        options=list(employee_options.keys()), 
+        index=default_index
+    )
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -1152,11 +1299,11 @@ def update_task_and_approve(task, task_manager, task_key, update_data, approve=T
 
 
 def show_employee_recommendations(task, task_manager, task_key):
-    """Show RAG employee recommendations for a task in proper card layout"""
+    """Show RAG employee recommendations for a task in proper card layout - UPDATED"""
     # Centered title
     st.markdown(
         """
-        <h2 style="text-align: center;">👥 RAG Employee Recommendations</h2>
+        <h2 style="text-align: center;">👥 AI Employee Recommendations</h2>
         """,
         unsafe_allow_html=True
     )
@@ -1166,10 +1313,10 @@ def show_employee_recommendations(task, task_manager, task_key):
     is_rag_enhanced = strategic_meta.get('rag_enhanced', False)
     
     if is_rag_enhanced:
-        st.success("🎯 **RAG-Enhanced Analysis** - Using JD documents for precise employee matching")
+        st.success("🔍 **RAG-Enhanced Analysis** - Using JD documents for precise employee matching")
     
     # Load fresh recommendations data
-    with st.spinner("🔄 Loading RAG recommendations..."):
+    with st.spinner("🔄 Loading AI recommendations..."):
         recommendations_data = task_manager.get_task_employee_recommendations(task['id'])
     
     if not recommendations_data.get('success'):
@@ -1189,8 +1336,8 @@ def show_employee_recommendations(task, task_manager, task_key):
     recommendations = recommendations_data.get('recommendations', [])
     
     if not recommendations:
-        st.info("📭 No RAG employee recommendations available yet.")
-        if st.button("🔍 Generate RAG Recommendations", key=f"generate_rag_{task['id']}", use_container_width=True):
+        st.info("📭 No AI employee recommendations available yet.")
+        if st.button("🔍 Generate AI Recommendations", key=f"generate_rag_{task['id']}", use_container_width=True):
             st.session_state[task_key]['rag_loading'] = True
             st.rerun()
         return
@@ -1199,32 +1346,61 @@ def show_employee_recommendations(task, task_manager, task_key):
     analysis = strategic_meta.get('recommendations_analysis', '')
     total_considered = strategic_meta.get('total_employees_considered', 0)
     
+    # Count role-based assignments
+    role_based_count = sum(1 for rec in recommendations if rec.get('role_based_assignment'))
+    analysis_based_count = len(recommendations) - role_based_count
+    
     if analysis or total_considered:
-        with st.expander("📊 RAG Analysis Summary", expanded=True):
+        with st.expander("📊 Analysis Summary", expanded=True):
             if total_considered:
                 st.write(f"**Employees analyzed:** {total_considered}")
+            if role_based_count > 0:
+                st.success(f"**Role-based assignments:** {role_based_count}")
+            if analysis_based_count > 0:
+                st.info(f"**Analysis-based recommendations:** {analysis_based_count}")
             if is_rag_enhanced:
                 st.write(f"**JD Documents analyzed:** {strategic_meta.get('employees_with_jd', 0)}")
             if analysis:
                 st.write("**Analysis:**", analysis)
     
+    # Recommendation strategy explanation
+    with st.expander("🎯 Recommendation Strategy", expanded=True):
+        st.write("""
+        **How recommendations are generated:**
+        
+        🎯 **Role-Based Assignment (100% Fit Score)**
+        - Task matches standard process with predefined responsible role
+        - Employee has the exact role required
+        - Perfect alignment - only 1 recommendation shown
+        
+        📊 **Analysis-Based Recommendations**
+        - **>90% Fit**: 1 recommendation (Excellent match)
+        - **80-90% Fit**: 2 recommendations (Good matches)  
+        - **<80% Fit**: 3 recommendations (Moderate matches)
+        
+        Recommendations prioritize **role alignment** first, then **JD analysis**.
+        """)
+    
     # Centered subtitle
     st.markdown(
-        f"<h3 style='text-align: center;'>🎯 Top {len(recommendations)} Recommendations</h3>",
+        f"<h3 style='text-align: center;'>🎯 {len(recommendations)} Recommendation(s)</h3>",
         unsafe_allow_html=True
     )
     
     # Center each recommendation card using columns
     for i, rec in enumerate(recommendations):
-            show_rag_recommendation_card(task, task_manager, task_key, rec, i, is_rag_enhanced)
-        
+        show_rag_recommendation_card(task, task_manager, task_key, rec, i, is_rag_enhanced)       
         
 def show_rag_recommendation_card(task, task_manager, task_key, rec, index, is_rag_enhanced):
-    """Show RAG recommendation in a proper card layout - FULL WIDTH"""
+    """Show RAG recommendation in a proper card layout - UPDATED FOR FIT_SCORE DISPLAY"""
     
     # Card container using full width layout
     with st.container():
         st.markdown("---")
+        
+        # Highlight role-based assignments
+        if rec.get('role_based_assignment'):
+            st.success("🎯 **ROLE-BASED ASSIGNMENT** - Perfect match for standard process")
         
         # Full width header with employee name and fit score
         col_header1, col_header2, col_header3 = st.columns([2, 1, 1])
@@ -1240,52 +1416,61 @@ def show_rag_recommendation_card(task, task_manager, task_key, rec, index, is_ra
                 role_dept.append(rec['employee_department'])
             if role_dept:
                 st.write(f"**Role:** {' - '.join(role_dept)}")
+            
+            # Assignment type
+            assignment_type = rec.get('assignment_type', 'analysis')
+            if assignment_type == 'direct_role_assignment':
+                st.success("✅ **Direct Role Assignment**")
         
         with col_header2:
-            # Fit score - large and prominent
+            # Fit score - large and prominent (REPLACES confidence)
             fit_score = rec.get('fit_score', 0)
-            st.metric("Fit Score", f"{fit_score}%")
+            
+            # Color code based on fit_score
+            if fit_score == 100:
+                st.metric("Fit Score", f"{fit_score}%", delta="Perfect Match", delta_color="off")
+            elif fit_score >= 90:
+                st.metric("Fit Score", f"{fit_score}%", delta="Excellent", delta_color="normal")
+            elif fit_score >= 80:
+                st.metric("Fit Score", f"{fit_score}%", delta="Good", delta_color="normal")
+            else:
+                st.metric("Fit Score", f"{fit_score}%", delta="Moderate", delta_color="off")
             
         with col_header3:
-            # Confidence level
-            confidence = rec.get('confidence', 'medium')
-            confidence_color = {
-                'high': 'green',
-                'medium': 'orange', 
-                'low': 'red'
-            }.get(confidence, 'gray')
-            st.markdown(
-                f"<span style='color: {confidence_color}; font-weight: 600;'>🔍 {confidence.upper()} CONFIDENCE</span>",
-                unsafe_allow_html=True
-            )
-            
             # RAG-enhanced flag
-            if is_rag_enhanced:
+            if is_rag_enhanced and rec.get('rag_enhanced'):
                 st.success("🔍 RAG Enhanced")
-                rag_score = rec.get('rag_enhanced_score')
-                if rag_score is not None:
-                    st.metric("RAG Score", f"{rag_score}%")
+            
+            # Assignment type badge
+            assignment_type = rec.get('assignment_type')
+            if assignment_type == 'direct_role_assignment':
+                st.success("🎯 Role-Based")
+            else:
+                st.info("📊 Analysis-Based")
             
         # Key qualifications section
-            qualifications = rec.get('key_qualifications', [])
-            if qualifications and isinstance(qualifications, list):
-                st.write("**Key Skills:**")
-            skill_chips = " ".join([f"`{skill}`" for skill in qualifications[:8]])
-            st.markdown(skill_chips)
-            
-            # Skills match details
-            skills_matches = rec.get('skills_match_list', rec.get('skills_match', []))
-            if skills_matches and isinstance(skills_matches, list) and len(skills_matches) > 0:
-                with st.expander(f"🔧 Matching Skills ({len(skills_matches)})", expanded=False):
-                    for skill in skills_matches[:10]:  # Show top 10 matching skills
-                        st.write(f"✅ {skill}")
-            
-            # Reason for recommendation
-            reason = rec.get('reason', '')
-            if reason:
-                with st.expander("📊 Analysis Details", expanded=False):
-                    st.write(reason)
-            
+        qualifications = rec.get('key_qualifications', [])
+        if qualifications and isinstance(qualifications, list):
+            st.write("**Key Qualifications:**")
+            # Display qualifications as chips
+            for qual in qualifications[:6]:  # Show max 6 qualifications
+                st.write(f"• {qual}")
+        
+        # Reason for recommendation
+        reason = rec.get('reason', '')
+        if reason:
+            with st.expander("📊 Assignment Rationale", expanded=False):
+                st.write(reason)
+                
+                # Show additional details for role-based assignments
+                if rec.get('role_based_assignment'):
+                    st.info("""
+                    **Role-Based Assignment Logic:**
+                    - Task matches standard process with predefined responsible role
+                    - Employee has the exact role required
+                    - 100% fit score indicates perfect role-task alignment
+                    """)
+        
         # Action buttons
         st.divider()
         show_rag_recommendation_actions(task, task_manager, task_key, rec, index)
@@ -1630,7 +1815,7 @@ def show_no_recommendations_ui(task, task_manager, task_key):
     """Show UI when no recommendations exist - ONLY RAG option"""
     state = st.session_state[task_key]
     
-    if st.button("🔍 Get RAG Recommendations", key=f"get_rag_{task['id']}", use_container_width=True):
+    if st.button("🔍 Get Employee Recommendations", key=f"get_rag_{task['id']}", use_container_width=True):
         state['rag_loading'] = True
         state['rag_ai_meta_id'] = None
         st.rerun()
@@ -1651,7 +1836,7 @@ def handle_goal_creation_result(result):
 # ========== DASHBOARD FUNCTIONS ==========
 
 def show_admin_dashboard():
-    """Admin task dashboard"""
+    """Admin task dashboard with null safety"""
     st.subheader("📊 Task Management Dashboard")
     
     task_manager = get_task_manager()
@@ -1686,10 +1871,25 @@ def show_admin_dashboard():
             with st.expander(f"📌 {task['task_description']} - {task.get('status', 'pending').title()}", expanded=False):
                 col1, col2 = st.columns([2, 1])
                 with col1:
-                    st.write(f"**Assigned to:** {task.get('employees', {}).get('name', 'Unassigned')}")
-                    st.write(f"**Goal:** {task.get('objectives', {}).get('title', 'No Goal')}")
+                    # FIXED: Null-safe employee access
+                    employees_data = task.get('employees') or {}
+                    assigned_to = employees_data.get('name', 'Unassigned')
+                    st.write(f"**Assigned to:** {assigned_to}")
+                    
+                    # FIXED: Null-safe objectives access
+                    objectives_data = task.get('objectives') or {}
+                    goal_title = objectives_data.get('title', 'No Goal')
+                    st.write(f"**Goal:** {goal_title}")
+                    
                     st.write(f"**Priority:** {task.get('priority', 'medium').title()}")
-                    st.write(f"**Deadline:** {task.get('due_date', 'Not set')[:10]}")
+                    
+                    # FIXED: Safe due date access
+                    due_date = task.get('due_date', 'Not set')
+                    if due_date and due_date != 'Not set':
+                        st.write(f"**Deadline:** {due_date[:10]}")
+                    else:
+                        st.write(f"**Deadline:** Not set")
+                        
                     st.write(f"**Progress:** {task.get('completion_percentage', 0)}%")
                 
                 with col2:
@@ -1719,7 +1919,7 @@ def show_task_management():
 # ========== TASK MANAGEMENT ADMIN - UPDATED WITH NAVIGATION ==========
 
 def show_task_management_admin():
-    """Task management for admin with navigation support - FIXED VERSION"""
+    """Task management for admin with navigation support and objective filtering - FIXED VERSION"""
     st.subheader("📝 Manage All Tasks")
     
     # Check if we have a task ID from notification navigation
@@ -1734,6 +1934,11 @@ def show_task_management_admin():
                 st.rerun()
     
     task_manager = get_task_manager()
+    
+    # Get objectives for filtering
+    goals_data = task_manager.get_goals()
+    goals = goals_data.get('goals', []) if goals_data.get('success') else []
+    
     dashboard_data = task_manager.get_task_dashboard()
     
     if not dashboard_data.get('success'):
@@ -1741,6 +1946,16 @@ def show_task_management_admin():
         return
     
     tasks = dashboard_data.get('tasks', [])
+    
+    # DEBUG: Show what data we're working with
+    with st.expander("🔍 Debug - Raw Data", expanded=False):
+        st.write(f"Total tasks loaded: {len(tasks)}")
+        st.write("### Sample tasks with objectives:")
+        sample_tasks_with_objectives = [t for t in tasks if t.get('objectives')][:3]
+        for task in sample_tasks_with_objectives:
+            st.write(f"Task: {task.get('task_description')[:50]}...")
+            st.write(f"Objective data: {task.get('objectives')}")
+            st.write("---")
     
     # If we have a specific task to show, filter to just that task
     if current_task_id:
@@ -1755,36 +1970,103 @@ def show_task_management_admin():
         # Normal filtering for all tasks
         filtered_tasks = tasks
     
-    # Filters for admin view
+    # Enhanced filters for admin view with objective filtering - UPDATED LAYOUT
     col1, col2, col3 = st.columns(3)
     with col1:
         status_filter = st.selectbox("Filter by Status", ["All", "not_started", "in_progress", "completed", "waiting", "ai_suggested"])
     with col2:
-        priority_filter = st.selectbox("Filter by Priority", ["All", "high", "medium", "low"])
+        # Filter by OBJECTIVE priority, not task priority
+        priority_filter = st.selectbox("Filter by Objective Priority", ["All", "high", "medium", "low", "No Objective"])
     with col3:
-        department_filter = st.selectbox("Filter by Department", ["All", "Engineering", "Marketing", "Sales", "QA", "Operations"])
+        # Date range filter
+        st.write("Filter by Creation Date Range")
+        date_col1, date_col2 = st.columns(2)
+        with date_col1:
+            start_date = st.date_input("From", value=None, key="start_date")
+        with date_col2:
+            end_date = st.date_input("To", value=None, key="end_date")
     
     # Apply filters
     if status_filter != "All":
         filtered_tasks = [t for t in filtered_tasks if t.get('status') == status_filter]
+    
     if priority_filter != "All":
-        filtered_tasks = [t for t in filtered_tasks if t.get('priority') == priority_filter]
-    if department_filter != "All":
-        filtered_tasks = [t for t in filtered_tasks if t.get('employees', {}).get('department') == department_filter]
+        if priority_filter == "No Objective":
+            # Filter tasks that have no objective linked
+            filtered_tasks = [t for t in filtered_tasks if not t.get('objectives')]
+        else:
+            # Filter by specific objective priority - FIXED LOGIC
+            filtered_tasks = [t for t in filtered_tasks if 
+                             t.get('objectives') and 
+                             isinstance(t['objectives'], dict) and 
+                             str(t['objectives'].get('priority', '')).lower() == priority_filter.lower()]
     
-    # Sort options for admin
-    sort_by = st.selectbox("Sort by", ["Due Date", "Priority", "Status", "Recently Created"])
+    # Apply date range filter
+    if start_date or end_date:
+        start_date_str = start_date.isoformat() if start_date else "0000-01-01"
+        end_date_str = end_date.isoformat() if end_date else "9999-12-31"
+        
+        filtered_tasks = [t for t in filtered_tasks if t.get('created_at')]
+        filtered_tasks = [t for t in filtered_tasks if start_date_str <= t['created_at'][:10] <= end_date_str]
     
+    # Objective filter (separate row since it's more important)
+    st.markdown("---")
+    col_obj1, col_obj2 = st.columns([1, 3])
+    with col_obj1:
+        # Objective filter
+        objective_options = ["All Objectives"] + [f"{g['title']} (Pre-{g.get('pre_number', 'N/A')})" for g in goals]
+        objective_filter = st.selectbox("Filter by Objective", objective_options)
+    
+    with col_obj2:
+        # Sort options for admin
+        sort_by = st.selectbox("Sort by", ["Due Date", "Objective Priority", "Status", "Recently Created", "Objective Title"])
+    
+    # Apply objective filter
+    if objective_filter != "All Objectives":
+        # Extract objective title from the selection
+        objective_title = objective_filter.split(' (Pre-')[0]
+        filtered_tasks = [t for t in filtered_tasks if 
+                         t.get('objectives') and 
+                         isinstance(t['objectives'], dict) and 
+                         t['objectives'].get('title') == objective_title]
+    
+    # Sort tasks
     if sort_by == "Due Date":
         filtered_tasks.sort(key=lambda x: x.get('due_date', ''))
-    elif sort_by == "Priority":
-        priority_order = {'high': 0, 'medium': 1, 'low': 2}
-        filtered_tasks.sort(key=lambda x: priority_order.get(x.get('priority', 'low'), 2))
+    elif sort_by == "Objective Priority":
+        # Sort by objective priority
+        def get_priority_value(task):
+            if task.get('objectives') and isinstance(task['objectives'], dict):
+                priority = str(task['objectives'].get('priority', '')).lower()
+                priority_order = {'high': 0, 'medium': 1, 'low': 2}
+                return priority_order.get(priority, 3)  # 3 for unknown priorities
+            return 4  # 4 for no objective
+            
+        filtered_tasks.sort(key=get_priority_value)
     elif sort_by == "Status":
         status_order = {'in_progress': 0, 'not_started': 1, 'waiting': 2, 'ai_suggested': 3, 'completed': 4}
         filtered_tasks.sort(key=lambda x: status_order.get(x.get('status', 'not_started'), 5))
+    elif sort_by == "Objective Title":
+        filtered_tasks.sort(key=lambda x: x.get('objectives', {}).get('title', '') if x.get('objectives') and isinstance(x['objectives'], dict) else '')
     else:  # Recently Created
         filtered_tasks.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+    
+    # Display task count and quick stats
+    st.write(f"**Showing {len(filtered_tasks)} tasks**")
+    
+    # Show filter summary
+    if priority_filter != "All" or start_date or end_date or objective_filter != "All Objectives":
+        filter_summary = []
+        if priority_filter != "All":
+            filter_summary.append(f"Priority: {priority_filter}")
+        if start_date or end_date:
+            date_range = f"Date: {start_date or 'Any'} to {end_date or 'Any'}"
+            filter_summary.append(date_range)
+        if objective_filter != "All Objectives":
+            filter_summary.append(f"Objective: {objective_filter.split(' (Pre-')[0]}")
+        
+        if filter_summary:
+            st.info(" | ".join(filter_summary))
     
     if not filtered_tasks:
         st.info("No tasks found matching your filters.")
@@ -1792,23 +2074,43 @@ def show_task_management_admin():
     
     # Display tasks
     for task in filtered_tasks:
-        # FIX: Ensure is_current_task is always boolean, not None
         is_current_task = bool(current_task_id and task.get('id') == current_task_id)
         
-        with st.expander(
-            f"📋 {task['task_description']} - {task.get('employees', {}).get('name', 'Unassigned')}", 
-            expanded=is_current_task  # Auto-expand if this is the navigated task
-        ):
+        # Enhanced task header with objective info
+        employees_data = task.get('employees')
+        employee_name = 'Unassigned'
+        if isinstance(employees_data, dict):
+            employee_name = employees_data.get('name', 'Unassigned')
+        
+        objectives_data = task.get('objectives')
+        objective_title = 'No Objective'
+        objective_pre_number = 'N/A'
+        objective_priority = 'N/A'
+        
+        if objectives_data and isinstance(objectives_data, dict):
+            objective_title = objectives_data.get('title', 'No Objective')
+            objective_pre_number = objectives_data.get('pre_number', 'N/A')
+            objective_priority = objectives_data.get('priority', 'N/A')
+        
+        # Show task with objective info
+        expander_title = f"📋 {task['task_description'][:60]}... - {employee_name}"
+        if objective_title != 'No Objective':
+            expander_title += f" | 🎯 {objective_title} (Pre-{objective_pre_number})"
+            if objective_priority != 'N/A':
+                expander_title += f" | ⚡ {objective_priority}"
+        else:
+            expander_title += " | 🎯 No Objective"
+        
+        with st.expander(expander_title, expanded=is_current_task):
             show_admin_task_detail_with_attachments(task)
     
-    # Clear the navigation state after use if we were showing a specific task and user didn't clear it manually
+    # Clear the navigation state after use if we were showing a specific task
     if current_task_id and len(filtered_tasks) == 1:
-        # Don't auto-clear, let user use the back button
         pass
 # ========== EMPLOYEE TASKS WITH ATTACHMENTS - UPDATED WITH NAVIGATION ==========
 
 def show_employee_tasks_with_attachments():
-    """Employee task view with attachments - IMPROVED NAVIGATION"""
+    """Employee task view with attachments - IMPROVED NAVIGATION - FIXED VERSION"""
     st.subheader("📋 My Assigned Tasks")
     
     # Check if we have a task ID from notification navigation
@@ -1827,7 +2129,8 @@ def show_employee_tasks_with_attachments():
     employee_id = user_data.get('employee_id')
     
     if not employee_id:
-        st.error("Cannot load employee information")
+        st.error("Cannot load employee information - no employee ID found")
+        st.write(f"Debug - User data: {user_data}")
         return
     
     # This is correct - employees only see their own tasks
@@ -1835,6 +2138,7 @@ def show_employee_tasks_with_attachments():
     
     if not tasks_data.get('success'):
         st.error(f"Failed to load tasks: {tasks_data.get('error')}")
+        st.write(f"Debug - Employee ID used: {employee_id}")
         return
     
     tasks = tasks_data.get('tasks', [])
@@ -1876,6 +2180,8 @@ def show_employee_tasks_with_attachments():
         st.info("No tasks assigned to you. Great job! 🎉")
         return
     
+    st.write(f"**Showing {len(filtered_tasks)} tasks assigned to you**")
+    
     for task in filtered_tasks:
         # FIX: Ensure is_current_task is always boolean, not None
         is_current_task = bool(current_task_id and task.get('id') == current_task_id)
@@ -1887,7 +2193,6 @@ def show_employee_tasks_with_attachments():
             show_employee_task_detail_with_attachments(task)
     
     # Don't auto-clear the navigation state - let user use the back button
-
 
 # ========== REST OF YOUR EXISTING FUNCTIONS (UNCHANGED) ==========
 def reset_navigation_state():
@@ -1915,16 +2220,19 @@ def show_admin_task_detail_with_attachments(task):
         show_notes_tab(task, task_manager)
 
 def show_admin_task_details_tab(task, task_manager):
-    """Show task details tab for admin with enhanced RAG information"""
+    """Show task details tab for admin with enhanced RAG information - UPDATED"""
     col1, col2 = st.columns([2, 1])
     
     with col1:
         st.write(f"**Description:** {task.get('task_description', 'No description')}")
         
-        # Show assigned employees
+        # Show assigned employees - FIXED: Null-safe access
         assigned_employees = []
-        if task.get('employees', {}).get('name'):
-            assigned_employees.append(task['employees']['name'])
+        
+        # Primary assigned employee
+        primary_employee = task.get('employees')
+        if isinstance(primary_employee, dict) and primary_employee.get('name'):
+            assigned_employees.append(primary_employee['name'])
         
         # Handle multiple assignees
         if task.get('assigned_to_multiple'):
@@ -1940,9 +2248,21 @@ def show_admin_task_details_tab(task, task_manager):
         else:
             st.write("**Assigned to:** Unassigned")
         
-        st.write(f"**Goal:** {task.get('objectives', {}).get('title', 'No Goal')}")
+        # FIXED: Null-safe objectives access
+        objectives_data = task.get('objectives')
+        goal_title = 'No Goal'
+        if isinstance(objectives_data, dict):
+            goal_title = objectives_data.get('title', 'No Goal')
+        st.write(f"**Goal:** {goal_title}")
+        
         st.write(f"**Priority:** {task.get('priority', 'medium').title()}")
-        st.write(f"**Deadline:** {task.get('due_date', 'Not set')[:10]}")
+        
+        # FIXED: Safe due date access
+        due_date = task.get('due_date', 'Not set')
+        if due_date and due_date != 'Not set':
+            st.write(f"**Deadline:** {due_date[:10]}")
+        else:
+            st.write(f"**Deadline:** Not set")
         
         # Enhanced status display
         status = task.get('status', 'not_started')
@@ -1963,21 +2283,9 @@ def show_admin_task_details_tab(task, task_manager):
         st.progress(progress / 100)
         st.write(f"**Progress:** {progress}%")
         
-        # Enhanced AI recommendations display with RAG info
+        # Show the 5 strategic fields - THIS IS THE KEY FIX
         strategic_meta = task.get('strategic_metadata', {})
-        if strategic_meta.get('employee_recommendations_available'):
-            with st.expander("👥 AI Employee Recommendations", expanded=False):
-                # Show RAG enhancement status
-                if strategic_meta.get('rag_enhanced'):
-                    st.success("🔍 **RAG-Enhanced Analysis**")
-                    st.write(f"JD Documents Analyzed: {strategic_meta.get('employees_with_jd', 0)}")
-                
-                recommendations = strategic_meta.get('ai_recommendations', [])
-                for rec in recommendations[:3]:  # Show top 3
-                    st.write(f"**{rec.get('employee_name')}** - Fit: {rec.get('fit_score')}%")
-                    if rec.get('rag_enhanced_score'):
-                        st.write(f"  RAG Score: {rec.get('rag_enhanced_score')}%")
-                    st.write(f"  Reason: {rec.get('reason', 'No reason provided')[:100]}...")
+        show_other_details_expander(task, strategic_meta)
     
     with col2:
         # Use session state to track edit mode for admin task editing
@@ -2232,67 +2540,53 @@ def show_admin_edit_form(task, task_manager, edit_key):
             st.rerun()
 
 def show_attachments_tab(task, task_manager):
-    """Show attachments tab for a task"""
-    st.subheader("📎 Task Attachments")
+    """Show attachments tab for a task with progress update form for employees"""
+    st.subheader("📎 Task Attachments & Progress")
     
     # Load attachments
     attachments_data = task_manager.get_task_attachments(task['id'])
     
     if not attachments_data.get('success'):
         st.error(f"Failed to load attachments: {attachments_data.get('error')}")
-        return
-    
-    attachments = attachments_data.get('attachments', [])
-    
-    if not attachments:
-        st.info("No attachments found for this task.")
+        # Still show progress form even if attachments fail
     else:
-        # Display attachments in a table
-        st.write(f"**Total Attachments:** {len(attachments)}")
+        attachments = attachments_data.get('attachments', [])
         
-        for i, attachment in enumerate(attachments):
-            with st.container():
-                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
-                
-                with col1:
-                    st.write(f"**{attachment.get('filename', 'Unknown')}**")
-                    st.write(f"Type: {attachment.get('file_type', 'Unknown')}")
-                
-                with col2:
-                    file_size = attachment.get('file_size', 0)
-                    st.write(f"Size: {file_size} bytes")
-                    st.write(f"Uploaded: {attachment.get('created_at', '')[:10]}")
-                
-                with col3:
-                    uploaded_by = attachment.get('employee_name', 'Unknown')
-                    st.write(f"By: {uploaded_by}")
-                
-                with col4:
-                    # Download button
-                    if st.button("⬇️ Download", key=f"download_{i}_{task['id']}", use_container_width=True):
-                        # Create download link
-                        public_url = attachment.get('public_url')
-                        if public_url:
-                            st.markdown(f'<a href="{public_url}" target="_blank">Download File</a>', unsafe_allow_html=True)
+        if not attachments:
+            st.info("No attachments found for this task.")
+        else:
+            # Display attachments in a table
+            st.write(f"**Total Attachments:** {len(attachments)}")
+            
+            for i, attachment in enumerate(attachments):
+                with st.container():
+                    col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
                     
-                    # Delete button (admin only)
-                    if st.session_state.get('user_role') in ['admin', 'superadmin']:
-                        if st.button("🗑️ Delete", key=f"delete_attach_{i}_{task['id']}", use_container_width=True):
-                            result = task_manager.delete_task_attachment(
-                                task['id'], 
-                                attachment['update_id'], 
-                                i
-                            )
-                            if result.get('success'):
-                                st.success("✅ Attachment deleted!")
-                                st.rerun()
-                            else:
-                                st.error(f"❌ Failed to delete: {result.get('error')}")
-                
-                st.markdown("---")
+                    with col1:
+                        st.write(f"**{attachment.get('filename', 'Unknown')}**")
+                        st.write(f"Type: {attachment.get('file_type', 'Unknown')}")
+                    
+                    with col2:
+                        file_size = attachment.get('file_size', 0)
+                        st.write(f"Size: {file_size} bytes")
+                        st.write(f"Uploaded: {attachment.get('created_at', '')[:10]}")
+                    
+                    with col3:
+                        uploaded_by = attachment.get('employee_name', 'Unknown')
+                        st.write(f"By: {uploaded_by}")
+                    
+                    with col4:
+                        # Download button
+                        if st.button("⬇️ Download", key=f"download_{i}_{task['id']}", use_container_width=True):
+                            # Create download link
+                            public_url = attachment.get('public_url')
+                            if public_url:
+                                st.markdown(f'<a href="{public_url}" target="_blank">Download File</a>', unsafe_allow_html=True)
+                    
+                    st.markdown("---")
     
     # File upload section
-    st.subheader("Upload New File")
+    st.subheader("📤 Upload New File")
     with st.form(f"upload_form_{task['id']}"):
         uploaded_file = st.file_uploader(
             "Choose file", 
@@ -2316,6 +2610,31 @@ def show_attachments_tab(task, task_manager):
                     st.error(f"❌ Upload failed: {result.get('error')}")
             else:
                 st.error("Please select a file to upload")
+    
+    # ========== ADD PROGRESS UPDATE FORM FOR EMPLOYEES ==========
+    if st.session_state.get('user_role') == 'employee':
+        st.markdown("---")
+        st.subheader("📈 Update Progress & Add Note")
+        
+        # Initialize session state for this task's update form
+        update_key = f"employee_update_{task['id']}"
+        if update_key not in st.session_state:
+            st.session_state[update_key] = {
+                'updating': False,
+                'progress': task.get('completion_percentage', 0),
+                'notes': ''
+            }
+        
+        if st.session_state[update_key]['updating']:
+            show_employee_progress_update_form(task, task_manager, update_key)
+        else:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.info("Update your task progress and add notes here")
+            with col2:
+                if st.button("✏️ Update Progress", key=f"start_update_{task['id']}", use_container_width=True):
+                    st.session_state[update_key]['updating'] = True
+                    st.rerun()
 
 def show_notes_tab(task, task_manager):
     """Show notes tab for a task with attachment information"""
@@ -2424,7 +2743,7 @@ def show_employee_task_detail_with_attachments(task):
     task_manager = get_task_manager()
     
     # Create tabs for task details, attachments, and notes
-    tab1, tab2, tab3 = st.tabs(["📋 Task Details", "📎 Attachments", "📝 Notes"])
+    tab1, tab2, tab3 = st.tabs(["📋 Task Details", "📎 Task update", "📝 Notes"])
     
     with tab1:
         show_employee_task_details_tab(task, task_manager)
@@ -2436,45 +2755,61 @@ def show_employee_task_detail_with_attachments(task):
         show_notes_tab(task, task_manager)
 
 def show_employee_task_details_tab(task, task_manager):
-    """Show task details tab for employee"""
-    col1, col2 = st.columns([2, 1])
+    """Show task details for employee without progress update form - UPDATED"""
+    col1, col2 = st.columns([3, 1])
     
     with col1:
         st.write(f"**Description:** {task.get('task_description', 'No description')}")
+        
+        # Show objective information with pre-number - FIXED: Null-safe access
+        objectives_data = task.get('objectives')
+        objective_title = 'No Goal'
+        objective_pre_number = 'N/A'
+        objective_id = task.get('objective_id', 'N/A')
+        
+        if isinstance(objectives_data, dict):
+            objective_title = objectives_data.get('title', 'No Goal')
+            objective_pre_number = objectives_data.get('pre_number', 'N/A')
+            
+        st.write(f"**Objective:** {objective_title} (Pre-number: {objective_pre_number}, ID: {objective_id})")
+        
         st.write(f"**Priority:** {task.get('priority', 'medium').title()}")
         st.write(f"**Due Date:** {task.get('due_date', 'Not set')[:10]}")
-        st.write(f"**Status:** {task.get('status', 'not_started').title()}")
-        st.write(f"**Goal:** {task.get('objectives', {}).get('title') if task.get('objectives') else 'General'}")
+        
+        # Enhanced status display
+        status = task.get('status', 'not_started')
+        status_display = status.replace('_', ' ').title()
+        if status == 'waiting':
+            st.warning(f"**Status:** ⏳ {status_display} (Waiting for prerequisites)")
+        elif status == 'completed':
+            st.success(f"**Status:** ✅ {status_display}")
+        elif status == 'in_progress':
+            st.info(f"**Status:** 🔄 {status_display}")
+        else:
+            st.write(f"**Status:** {status_display}")
+        
+        # Progress bar
+        progress = task.get('completion_percentage', 0)
+        st.progress(progress / 100)
+        st.write(f"**Progress:** {progress}%")
+        
+        # Show the 5 strategic fields - THIS IS THE KEY FIX FOR EMPLOYEES
+        strategic_meta = task.get('strategic_metadata', {})
+        show_other_details_expander(task, strategic_meta)
+        
         # Check if deadline is overdue
         if task.get('due_date'):
-            due_date = datetime.fromisoformat(task['due_date'].replace('Z', ''))
-            if due_date.date() < datetime.utcnow().date() and task.get('status') != 'completed':
-                st.error("⚠️ This task is overdue!")
-        
-        # Dependencies
-        dependencies = task.get('dependencies', [])
-        if dependencies:
-            st.write("**Dependencies:**")
-            for dep_id in dependencies:
-                st.write(f"↳ Must complete task {dep_id[:8]}... first")
-
+            try:
+                due_date = datetime.fromisoformat(task['due_date'].replace('Z', ''))
+                if due_date.date() < datetime.utcnow().date() and task.get('status') != 'completed':
+                    st.error("⚠️ This task is overdue!")
+            except:
+                # If date parsing fails, skip overdue check
+                pass
+    
     with col2:
-        employee_update_key = f"employee_update_{task['id']}"
-        
-        if employee_update_key not in st.session_state:
-            st.session_state[employee_update_key] = {
-                'updating': False,
-                'progress': task.get('completion_percentage', 0),
-                'notes': ''
-            }
-        
-        if st.session_state[employee_update_key]['updating']:
-            # This now calls the enhanced version with employee attachments
-            show_employee_progress_update_form(task, task_manager, employee_update_key)
-        else:
-            if st.button("📈 Update Progress", key=f"update_btn_{task['id']}", use_container_width=True):
-                st.session_state[employee_update_key]['updating'] = True
-                st.rerun()
+        # Removed progress update button - now in attachments tab
+        st.info("💡 Update progress in the 'Attachments & Progress' tab")
 
 def show_employee_progress_update_form(task, task_manager, update_key):
     """Show employee progress update form with employee attachment feature"""
