@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from .auth import AuthManager, token_required, admin_required
+from auth import AuthManager, token_required, admin_required
 import os
 from dotenv import load_dotenv
 
@@ -14,7 +14,7 @@ def create_app():
     
     # Import and register employee routes
     try:
-        from .employee_routes_fixed import employee_bp
+        from employee_routes_fixed import employee_bp
         app.register_blueprint(employee_bp)
         print("✅ Employee routes registered successfully")
     except Exception as e:
@@ -27,7 +27,7 @@ def create_app():
     
     # Import and register task routes
     try:
-        from .task_routes import task_bp
+        from task_routes import task_bp
         app.register_blueprint(task_bp)
         print("✅ Task routes registered successfully")
     except Exception as e:
@@ -35,7 +35,7 @@ def create_app():
 
     # OLD NOTIFICATION ROUTES (keep for compatibility but they might not work for admin)
     try:
-        from .notification_routes import notification_bp
+        from notification_routes import notification_bp
         app.register_blueprint(notification_bp)
         print("✅ OLD Notification routes registered successfully")
     except Exception as e:
