@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from .auth import AuthManager, token_required, admin_required
+from auth import AuthManager, token_required, admin_required
 import os
 from dotenv import load_dotenv
 
@@ -112,6 +112,7 @@ def create_app():
 
     return app
 
+app = create_app()
 
 if __name__ == '__main__':
     app = create_app()
