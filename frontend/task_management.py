@@ -604,13 +604,20 @@ def show_classified_task_card(task, index, task_manager):
         with col1:
             st.write(f"**Description:** {task.get('task_description', 'No description')}")
             
-            # Show objective information with pre-number
+            # ========== UPDATED: REMOVE PRE-NUMBER FROM OBJECTIVE DISPLAY ==========
             objective_title = task.get('objectives', {}).get('title', 'No Goal')
-            objective_pre_number = task.get('objectives', {}).get('pre_number', 'N/A')
-            st.write(f"**Objective:** {objective_title} (Pre-number: {objective_pre_number})")
+            st.write(f"**Objective:** {objective_title}")
             # Task details in a compact layout
             col1a, col1b, col1c = st.columns(3)
             with col1a:
+                # ========== ADDED: CREATED DATE ==========
+                created_at = task.get('created_at', '')
+                if created_at:
+                    try:
+                        created_date = datetime.fromisoformat(created_at.replace('Z', '')).date()
+                        st.write(f"**Created:** {created_date}")
+                    except:
+                        st.write(f"**Created:** {created_at[:10]}")
                 st.write(f"**Due:** {task.get('due_date', 'Not set')[:10]}")
                 st.write(f"**Priority:** {task.get('priority', 'medium').title()}")
             with col1b:
@@ -1919,7 +1926,7 @@ def show_task_management():
 # ========== TASK MANAGEMENT ADMIN - UPDATED WITH NAVIGATION ==========
 
 def show_task_management_admin():
-    """Task management for admin with navigation support and objective filtering - FIXED VERSION"""
+    """Task management for admin with navigation support and objective filtering - CLEAN VERSION"""
     st.subheader("📝 Manage All Tasks")
     
     # Check if we have a task ID from notification navigation
@@ -1947,16 +1954,6 @@ def show_task_management_admin():
     
     tasks = dashboard_data.get('tasks', [])
     
-    # DEBUG: Show what data we're working with
-    with st.expander("🔍 Debug - Raw Data", expanded=False):
-        st.write(f"Total tasks loaded: {len(tasks)}")
-        st.write("### Sample tasks with objectives:")
-        sample_tasks_with_objectives = [t for t in tasks if t.get('objectives')][:3]
-        for task in sample_tasks_with_objectives:
-            st.write(f"Task: {task.get('task_description')[:50]}...")
-            st.write(f"Objective data: {task.get('objectives')}")
-            st.write("---")
-    
     # If we have a specific task to show, filter to just that task
     if current_task_id:
         filtered_tasks = [t for t in tasks if t.get('id') == current_task_id]
@@ -1970,56 +1967,80 @@ def show_task_management_admin():
         # Normal filtering for all tasks
         filtered_tasks = tasks
     
-    # Enhanced filters for admin view with objective filtering - UPDATED LAYOUT
-    col1, col2, col3 = st.columns(3)
+    # Get unique employees for filtering
+    employees = set()
+    for task in tasks:
+        employees_data = task.get('employees')
+        if isinstance(employees_data, dict) and employees_data.get('name'):
+            employees.add(employees_data['name'])
+        elif employees_data and isinstance(employees_data, str):
+            employees.add(employees_data)
+    
+    employees = sorted(list(employees))
+    
+    # Enhanced filters for admin view - REORGANIZED LAYOUT
+    st.markdown("### 🔍 Filters")
+    
+    # First row - Main filters
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        status_filter = st.selectbox("Filter by Status", ["All", "not_started", "in_progress", "completed", "waiting", "ai_suggested"])
+        status_filter = st.selectbox("Status", ["All", "not_started", "in_progress", "completed", "waiting", "ai_suggested"])
     with col2:
-        # Filter by OBJECTIVE priority, not task priority
-        priority_filter = st.selectbox("Filter by Objective Priority", ["All", "high", "medium", "low", "No Objective"])
+        assignment_filter = st.selectbox("Assignment", ["All", "Assigned", "Unassigned"])
     with col3:
-        # Date range filter
-        st.write("Filter by Creation Date Range")
-        date_col1, date_col2 = st.columns(2)
-        with date_col1:
-            start_date = st.date_input("From", value=None, key="start_date")
-        with date_col2:
-            end_date = st.date_input("To", value=None, key="end_date")
+        employee_filter = st.selectbox("Employee", ["All Employees"] + employees)
+    with col4:
+        priority_filter = st.selectbox("Objective Priority", ["All", "high", "medium", "low", "No Objective"])
+    
+    # Second row - Objective filter with more space
+    col_obj, col_sort = st.columns([3, 1])  # 3:1 ratio for objective vs sort
+    with col_obj:
+        # Objective filter with full width
+        objective_options = ["All Objectives"] + [f"{g['title']} (Pre-{g.get('pre_number', 'N/A')})" for g in goals]
+        objective_filter = st.selectbox("Filter by Objective", objective_options)
+    
+    with col_sort:
+        # Compact sort options
+        sort_by = st.selectbox("Sort by", ["Due Date", "Objective Priority", "Status", "Recently Created"])
+    
+    # Third row - Date range
+    st.markdown("**Date Range**")
+    date_col1, date_col2, date_col3, date_col4 = st.columns(4)
+    with date_col1:
+        start_date = st.date_input("From", value=None, key="start_date")
+    with date_col2:
+        end_date = st.date_input("To", value=None, key="end_date")
     
     # Apply filters
     if status_filter != "All":
         filtered_tasks = [t for t in filtered_tasks if t.get('status') == status_filter]
+    
+    if assignment_filter != "All":
+        if assignment_filter == "Assigned":
+            filtered_tasks = [t for t in filtered_tasks if t.get('employees') and 
+                             ((isinstance(t['employees'], dict) and t['employees'].get('name')) or 
+                              (isinstance(t['employees'], str) and t['employees'].strip()))]
+        else:  # Unassigned
+            filtered_tasks = [t for t in filtered_tasks if not t.get('employees') or 
+                             (isinstance(t['employees'], dict) and not t['employees'].get('name')) or
+                             (isinstance(t['employees'], str) and not t['employees'].strip())]
+    
+    if employee_filter != "All Employees":
+        filtered_tasks = [t for t in filtered_tasks if 
+                         t.get('employees') and 
+                         ((isinstance(t['employees'], dict) and t['employees'].get('name') == employee_filter) or
+                          (isinstance(t['employees'], str) and t['employees'] == employee_filter))]
     
     if priority_filter != "All":
         if priority_filter == "No Objective":
             # Filter tasks that have no objective linked
             filtered_tasks = [t for t in filtered_tasks if not t.get('objectives')]
         else:
-            # Filter by specific objective priority - FIXED LOGIC
+            # Filter by specific objective priority
             filtered_tasks = [t for t in filtered_tasks if 
                              t.get('objectives') and 
                              isinstance(t['objectives'], dict) and 
                              str(t['objectives'].get('priority', '')).lower() == priority_filter.lower()]
-    
-    # Apply date range filter
-    if start_date or end_date:
-        start_date_str = start_date.isoformat() if start_date else "0000-01-01"
-        end_date_str = end_date.isoformat() if end_date else "9999-12-31"
-        
-        filtered_tasks = [t for t in filtered_tasks if t.get('created_at')]
-        filtered_tasks = [t for t in filtered_tasks if start_date_str <= t['created_at'][:10] <= end_date_str]
-    
-    # Objective filter (separate row since it's more important)
-    st.markdown("---")
-    col_obj1, col_obj2 = st.columns([1, 3])
-    with col_obj1:
-        # Objective filter
-        objective_options = ["All Objectives"] + [f"{g['title']} (Pre-{g.get('pre_number', 'N/A')})" for g in goals]
-        objective_filter = st.selectbox("Filter by Objective", objective_options)
-    
-    with col_obj2:
-        # Sort options for admin
-        sort_by = st.selectbox("Sort by", ["Due Date", "Objective Priority", "Status", "Recently Created", "Objective Title"])
     
     # Apply objective filter
     if objective_filter != "All Objectives":
@@ -2029,6 +2050,14 @@ def show_task_management_admin():
                          t.get('objectives') and 
                          isinstance(t['objectives'], dict) and 
                          t['objectives'].get('title') == objective_title]
+    
+    # Apply date range filter
+    if start_date or end_date:
+        start_date_str = start_date.isoformat() if start_date else "0000-01-01"
+        end_date_str = end_date.isoformat() if end_date else "9999-12-31"
+        
+        filtered_tasks = [t for t in filtered_tasks if t.get('created_at')]
+        filtered_tasks = [t for t in filtered_tasks if start_date_str <= t['created_at'][:10] <= end_date_str]
     
     # Sort tasks
     if sort_by == "Due Date":
@@ -2046,8 +2075,6 @@ def show_task_management_admin():
     elif sort_by == "Status":
         status_order = {'in_progress': 0, 'not_started': 1, 'waiting': 2, 'ai_suggested': 3, 'completed': 4}
         filtered_tasks.sort(key=lambda x: status_order.get(x.get('status', 'not_started'), 5))
-    elif sort_by == "Objective Title":
-        filtered_tasks.sort(key=lambda x: x.get('objectives', {}).get('title', '') if x.get('objectives') and isinstance(x['objectives'], dict) else '')
     else:  # Recently Created
         filtered_tasks.sort(key=lambda x: x.get('created_at', ''), reverse=True)
     
@@ -2055,18 +2082,23 @@ def show_task_management_admin():
     st.write(f"**Showing {len(filtered_tasks)} tasks**")
     
     # Show filter summary
-    if priority_filter != "All" or start_date or end_date or objective_filter != "All Objectives":
-        filter_summary = []
-        if priority_filter != "All":
-            filter_summary.append(f"Priority: {priority_filter}")
-        if start_date or end_date:
-            date_range = f"Date: {start_date or 'Any'} to {end_date or 'Any'}"
-            filter_summary.append(date_range)
-        if objective_filter != "All Objectives":
-            filter_summary.append(f"Objective: {objective_filter.split(' (Pre-')[0]}")
-        
-        if filter_summary:
-            st.info(" | ".join(filter_summary))
+    active_filters = []
+    if status_filter != "All":
+        active_filters.append(f"Status: {status_filter}")
+    if assignment_filter != "All":
+        active_filters.append(f"Assignment: {assignment_filter}")
+    if employee_filter != "All Employees":
+        active_filters.append(f"Employee: {employee_filter}")
+    if priority_filter != "All":
+        active_filters.append(f"Priority: {priority_filter}")
+    if start_date or end_date:
+        date_range = f"Date: {start_date or 'Any'} to {end_date or 'Any'}"
+        active_filters.append(date_range)
+    if objective_filter != "All Objectives":
+        active_filters.append(f"Objective: {objective_filter.split(' (Pre-')[0]}")
+    
+    if active_filters:
+        st.info(" | ".join(active_filters))
     
     if not filtered_tasks:
         st.info("No tasks found matching your filters.")
@@ -2081,6 +2113,8 @@ def show_task_management_admin():
         employee_name = 'Unassigned'
         if isinstance(employees_data, dict):
             employee_name = employees_data.get('name', 'Unassigned')
+        elif isinstance(employees_data, str) and employees_data.strip():
+            employee_name = employees_data
         
         objectives_data = task.get('objectives')
         objective_title = 'No Objective'
@@ -2092,10 +2126,11 @@ def show_task_management_admin():
             objective_pre_number = objectives_data.get('pre_number', 'N/A')
             objective_priority = objectives_data.get('priority', 'N/A')
         
-        # Show task with objective info
-        expander_title = f"📋 {task['task_description'][:60]}... - {employee_name}"
+        # Show task with objective info - now with full objective text
+        expander_title = f"📋 {task['task_description'][:50]}... | 👤 {employee_name}"
         if objective_title != 'No Objective':
-            expander_title += f" | 🎯 {objective_title} (Pre-{objective_pre_number})"
+            # Show full objective title in the expander header
+            expander_title += f" | 🎯 {objective_title}"
             if objective_priority != 'N/A':
                 expander_title += f" | ⚡ {objective_priority}"
         else:
@@ -2110,7 +2145,7 @@ def show_task_management_admin():
 # ========== EMPLOYEE TASKS WITH ATTACHMENTS - UPDATED WITH NAVIGATION ==========
 
 def show_employee_tasks_with_attachments():
-    """Employee task view with attachments - IMPROVED NAVIGATION - FIXED VERSION"""
+    """Employee task view with objective filtering and attachments - IMPROVED NAVIGATION - FIXED VERSION"""
     st.subheader("📋 My Assigned Tasks")
     
     # Check if we have a task ID from notification navigation
@@ -2156,29 +2191,69 @@ def show_employee_tasks_with_attachments():
         # Normal filtering for employee tasks
         filtered_tasks = tasks
     
-    # Filter options (employee-specific)
-    col1, col2 = st.columns(2)
+    # ========== NEW: OBJECTIVE FILTERING FOR EMPLOYEES ==========
+    # Get objectives for filtering from tasks assigned to this employee
+    employee_objectives = set()
+    for task in tasks:
+        objectives_data = task.get('objectives')
+        if objectives_data and isinstance(objectives_data, dict):
+            objective_title = objectives_data.get('title')
+            if objective_title:
+                employee_objectives.add(objective_title)
+    
+    employee_objectives = sorted(list(employee_objectives))
+    
+    # Enhanced filter options for employees with objective filtering
+    st.markdown("### 🔍 Filters")
+    col1, col2, col3 = st.columns(3)
+    
     with col1:
-        show_completed = st.checkbox("Show completed tasks", value=False)
+        status_filter = st.selectbox("Status", ["All", "not_started", "in_progress", "completed", "waiting"])
+    
     with col2:
-        sort_by = st.selectbox("Sort by", ["Due Date", "Priority", "Status"], key="employee_sort")
+        # NEW: Objective filter for employees
+        objective_options = ["All Objectives"] + employee_objectives
+        objective_filter = st.selectbox("Filter by Objective", objective_options)
+    
+    with col3:
+        sort_by = st.selectbox("Sort by", ["Due Date", "Priority", "Status", "Recently Updated"])
     
     # Apply employee-specific filters
-    if not show_completed:
-        filtered_tasks = [t for t in filtered_tasks if t.get('status') != 'completed']
+    if status_filter != "All":
+        filtered_tasks = [t for t in filtered_tasks if t.get('status') == status_filter]
     
+    # NEW: Apply objective filter for employees
+    if objective_filter != "All Objectives":
+        filtered_tasks = [t for t in filtered_tasks if 
+                         t.get('objectives') and 
+                         isinstance(t['objectives'], dict) and 
+                         t['objectives'].get('title') == objective_filter]
+    
+    # Sort tasks
     if sort_by == "Due Date":
         filtered_tasks.sort(key=lambda x: x.get('due_date', ''))
     elif sort_by == "Priority":
         priority_order = {'high': 0, 'medium': 1, 'low': 2}
         filtered_tasks.sort(key=lambda x: priority_order.get(x.get('priority', 'low'), 2))
-    else:
-        status_order = {'in_progress': 0, 'not_started': 1, 'completed': 2}
-        filtered_tasks.sort(key=lambda x: status_order.get(x.get('status', 'not_started'), 3))
+    elif sort_by == "Recently Updated":
+        filtered_tasks.sort(key=lambda x: x.get('updated_at', ''), reverse=True)
+    else:  # Status
+        status_order = {'in_progress': 0, 'not_started': 1, 'waiting': 2, 'completed': 3}
+        filtered_tasks.sort(key=lambda x: status_order.get(x.get('status', 'not_started'), 4))
     
     if not filtered_tasks:
         st.info("No tasks assigned to you. Great job! 🎉")
         return
+    
+    # Show filter summary
+    active_filters = []
+    if status_filter != "All":
+        active_filters.append(f"Status: {status_filter}")
+    if objective_filter != "All Objectives":
+        active_filters.append(f"Objective: {objective_filter}")
+    
+    if active_filters:
+        st.info(" | ".join(active_filters))
     
     st.write(f"**Showing {len(filtered_tasks)} tasks assigned to you**")
     
@@ -2186,11 +2261,26 @@ def show_employee_tasks_with_attachments():
         # FIX: Ensure is_current_task is always boolean, not None
         is_current_task = bool(current_task_id and task.get('id') == current_task_id)
         
-        with st.expander(
-            f"📌 {task['task_description']} - {task.get('status', 'not_started').title()}", 
-            expanded=is_current_task  # Auto-expand if this is the navigated task
-        ):
+        # UPDATED: Hide internal IDs in the display
+        employees_data = task.get('employees')
+        employee_name = 'Unassigned'
+        if isinstance(employees_data, dict):
+            employee_name = employees_data.get('name', 'Unassigned')
+        
+        objectives_data = task.get('objectives')
+        objective_title = 'No Objective'
+        
+        if objectives_data and isinstance(objectives_data, dict):
+            objective_title = objectives_data.get('title', 'No Objective')
+        
+        # UPDATED: Cleaner display without internal IDs
+        expander_title = f"📋 {task['task_description'][:50]}..."
+        if objective_title != 'No Objective':
+            expander_title += f" | 🎯 {objective_title}"
+        
+        with st.expander(expander_title, expanded=is_current_task):
             show_employee_task_detail_with_attachments(task)
+    
     
     # Don't auto-clear the navigation state - let user use the back button
 
@@ -2220,7 +2310,7 @@ def show_admin_task_detail_with_attachments(task):
         show_notes_tab(task, task_manager)
 
 def show_admin_task_details_tab(task, task_manager):
-    """Show task details tab for admin with enhanced RAG information - UPDATED"""
+    """Show task details tab for admin with enhanced RAG information"""
     col1, col2 = st.columns([2, 1])
     
     with col1:
@@ -2256,6 +2346,15 @@ def show_admin_task_details_tab(task, task_manager):
         st.write(f"**Goal:** {goal_title}")
         
         st.write(f"**Priority:** {task.get('priority', 'medium').title()}")
+        
+        # ========== ADDED: CREATED DATE BEFORE DEADLINE ==========
+        created_at = task.get('created_at', '')
+        if created_at:
+            try:
+                created_date = datetime.fromisoformat(created_at.replace('Z', '')).date()
+                st.write(f"**Created:** {created_date}")
+            except:
+                st.write(f"**Created:** {created_at[:10]}")
         
         # FIXED: Safe due date access
         due_date = task.get('due_date', 'Not set')
@@ -2637,8 +2736,13 @@ def show_attachments_tab(task, task_manager):
                     st.rerun()
 
 def show_notes_tab(task, task_manager):
-    """Show notes tab for a task with attachment information"""
-    st.subheader("📝 Task Notes & Updates")
+    """Show notes tab for a task with admin note form and conversation view"""
+    st.subheader("📝 Task Conversation & Notes")
+    
+    # ADD THIS: Show admin note form if user is admin
+    if st.session_state.get('user_role') in ['admin', 'superadmin']:
+        show_admin_note_form(task, task_manager)
+        st.markdown("---")
     
     # Load notes
     notes_data = task_manager.get_task_notes(task['id'])
@@ -2655,20 +2759,145 @@ def show_notes_tab(task, task_manager):
     notes = notes_data.get('notes', [])
     
     if not notes:
-        st.info("No notes found for this task.")
+        st.info("No conversation yet. Start by adding a note above!")
         return
+    
+    # Display conversation header
+    st.subheader(f"💬 Conversation History ({len(notes)} notes)")
     
     # Display notes in reverse chronological order (newest first)
     for note in notes:
         show_note_with_attachments(note, task_manager)
 
+def show_admin_note_form(task, task_manager):
+    """Show admin note form with employee attachment feature"""
+    st.subheader("💬 Add Note as Admin")
+    
+    # Get available employees for attachment
+    employees_data = task_manager.get_available_employees_for_attachment(task['id'])
+    available_employees = employees_data.get('employees', []) if employees_data.get('success') else []
+    
+    with st.form(f"admin_note_form_{task['id']}"):
+        notes = st.text_area(
+            "Note Content*",
+            placeholder="Add your note here... This will be visible to assigned employees and create a conversation thread.",
+            height=150,
+            key=f"admin_notes_{task['id']}"
+        )
+        
+        # Progress update (optional for admin)
+        current_progress = task.get('completion_percentage', 0)
+        new_progress = st.slider(
+            "Update Progress (Optional)", 
+            0, 100, 
+            current_progress,
+            key=f"admin_progress_{task['id']}"
+        )
+        
+        # Employee Attachment Section - Enhanced for conversation
+        st.subheader("👥 Notify Team Members")
+        st.info("Select team members to specifically notify about this note. This creates a conversation thread.")
+        
+        # Create employee options
+        employee_options = {f"{emp['name']} ({emp['role']})": emp['id'] for emp in available_employees}
+        
+        # Get task assignees for default selection
+        default_assignees = []
+        if task.get('assigned_to'):
+            emp_id = task['assigned_to']
+            emp = next((e for e in available_employees if e['id'] == emp_id), None)
+            if emp:
+                default_assignees.append(f"{emp['name']} ({emp['role']})")
+        
+        if task.get('assigned_to_multiple'):
+            for emp_id in task['assigned_to_multiple']:
+                emp = next((e for e in available_employees if e['id'] == emp_id), None)
+                if emp and f"{emp['name']} ({emp['role']})" not in default_assignees:
+                    default_assignees.append(f"{emp['name']} ({emp['role']})")
+        
+        # Multiple employee selection for conversation
+        attached_employees = st.multiselect(
+            "Team Members to Notify*",
+            options=list(employee_options.keys()),
+            default=default_assignees,
+            help="Selected employees will receive notifications and can continue the conversation"
+        )
+        
+        # Show conversation preview
+        if attached_employees:
+            st.success(f"💬 Conversation with: {', '.join([name.split(' (')[0] for name in attached_employees])}")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            submit_note = st.form_submit_button(
+                "📝 Post Note & Notify Team", 
+                type="primary",
+                use_container_width=True
+            )
+        
+        with col2:
+            if st.form_submit_button("💾 Save Note Only", use_container_width=True):
+                # This will be handled separately if needed
+                pass
+        
+        if submit_note:
+            if not notes.strip():
+                st.error("Please enter note content")
+                return
+                
+            if not attached_employees:
+                st.error("Please select at least one team member to notify")
+                return
+            
+            # Prepare attachment data
+            attached_employee_ids = [employee_options[emp] for emp in attached_employees]
+            
+            # Use the first employee as primary, rest as multiple
+            attached_to = attached_employee_ids[0] if attached_employee_ids else None
+            attached_to_multiple = attached_employee_ids[1:] if len(attached_employee_ids) > 1 else []
+            
+            # Add the note with attachments
+            result = task_manager.add_task_note_with_attachments(
+                task_id=task['id'],
+                notes=notes.strip(),
+                progress=new_progress if new_progress != current_progress else None,
+                attached_to=attached_to,
+                attached_to_multiple=attached_to_multiple
+            )
+            
+            if result.get('success'):
+                st.toast("✅ Note posted! Team members notified.", icon="💬")
+                st.balloons()
+                st.rerun()
+            else:
+                st.error(f"❌ Failed to post note: {result.get('error')}")
+
 def show_note_with_attachments(note, task_manager):
-    """Display a single note with attachment information"""
+    """Display a single note with enhanced conversation features"""
     with st.container():
+        # Use different background colors for different note types
+        is_specially_attached = note.get('is_attached_to_me', False)
+        is_admin_note = note.get('employee_role') in ['admin', 'superadmin']
+        
+        # Create a visual distinction
+        if is_specially_attached:
+            st.markdown("""
+            <style>
+            .specially-attached {
+                background-color: #f0f8ff;
+                padding: 10px;
+                border-radius: 10px;
+                border-left: 4px solid #2196F3;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            st.markdown('<div class="specially-attached">', unsafe_allow_html=True)
+        
         col1, col2 = st.columns([3, 1])
         
         with col1:
-            # Note content
+            # Note content with better formatting
             note_text = note.get('notes', '')
             if note_text:
                 st.write(note_text)
@@ -2677,66 +2906,82 @@ def show_note_with_attachments(note, task_manager):
             
             # Progress information
             if note.get('progress') is not None:
-                st.write(f"**Progress at time of note:** {note['progress']}%")
+                st.write(f"**Progress update:** {note['progress']}%")
             
-            # Attachment indicator
+            # Enhanced attachment indicator
             if note.get('has_attachments'):
                 attachments_count = note.get('attachments_count', 0)
                 st.info(f"📎 This update has {attachments_count} attachment(s)")
             
-            # Employee attachment information
+            # Enhanced employee attachment information
             show_note_attachment_info(note)
             
-            with col2:
-            # Metadata
-                employee_name = note.get('employee_name', 'Unknown')
-                employee_role = note.get('employee_role', 'N/A')
-                created_at = note.get('created_at', '')
-                
+        with col2:
+            # Enhanced metadata with role indicator
+            employee_name = note.get('employee_name', 'Unknown')
+            employee_role = note.get('employee_role', 'N/A')
+            created_at = note.get('created_at', '')
+            
+            # Role badge
+            if employee_role in ['admin', 'superadmin']:
+                st.success(f"👑 {employee_name}")
+            else:
                 st.write(f"**By:** {employee_name}")
-                st.write(f"**Role:** {employee_role}")
-                
+            
+            st.write(f"**Role:** {employee_role}")
+            
             # Format date
-                if created_at:
-                    try:
-                        if 'T' in created_at:
-                            display_date = created_at.replace('T', ' ')[:16]
-                        else:
-                            display_date = created_at[:16]
-                        st.write(f"**Date:** {display_date}")
-                    except:
-                        st.write(f"**Date:** {created_at[:16]}")
-                else:
-                    st.write("**Date:** Unknown")
+            if created_at:
+                try:
+                    if 'T' in created_at:
+                        display_date = created_at.replace('T', ' ')[:16]
+                    else:
+                        display_date = created_at[:16]
+                    st.write(f"**Date:** {display_date}")
+                except:
+                    st.write(f"**Date:** {created_at[:16]}")
+            else:
+                st.write("**Date:** Unknown")
             
             # Special attachment badge
             if note.get('is_attached_to_me'):
                 st.success("📨 Sent to you")
-            
-            st.markdown("---")
+        
+        if is_specially_attached:
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown("---")
 
 def show_note_attachment_info(note):
-    """Show information about who the note was attached to"""
+    """Show enhanced information about who the note was attached to"""
     attached_to_name = note.get('attached_to_name')
     attached_to_multiple_names = note.get('attached_to_multiple_names', [])
     
     if attached_to_name or attached_to_multiple_names:
-        st.write("**Specifically notified:**")
+        # Enhanced display for conversation participants
+        st.write("**💬 Conversation participants:**")
         
         all_attached = []
         if attached_to_name:
             all_attached.append(attached_to_name)
         if attached_to_multiple_names:
-            # Extract names from the list of dicts
-            names = [emp.get('name', 'Unknown') for emp in attached_to_multiple_names]
-            all_attached.extend(names)
+            # Handle both list of strings and list of dicts
+            if isinstance(attached_to_multiple_names, list) and attached_to_multiple_names:
+                if isinstance(attached_to_multiple_names[0], dict):
+                    names = [emp.get('name', 'Unknown') for emp in attached_to_multiple_names]
+                    all_attached.extend(names)
+                else:
+                    all_attached.extend(attached_to_multiple_names)
         
-        # Remove duplicates and display
+        # Remove duplicates and display with icons
         unique_attached = list(set(all_attached))
         for name in unique_attached:
-            st.write(f"👤 {name}")
-# ========== EMPLOYEE TASK FUNCTIONS ==========
-
+            # Check if this note was from the current user
+            current_user_name = st.session_state.get('user_data', {}).get('name', '')
+            if name == current_user_name:
+                st.write(f"👤 **You**")
+            else:
+                st.write(f"👤 {name}")
 
 def show_employee_task_detail_with_attachments(task):
     """Show task detail for employee with attachments and notes"""
@@ -2761,19 +3006,27 @@ def show_employee_task_details_tab(task, task_manager):
     with col1:
         st.write(f"**Description:** {task.get('task_description', 'No description')}")
         
-        # Show objective information with pre-number - FIXED: Null-safe access
+        # ========== UPDATED: REMOVE PRE-NUMBER AND ID FROM OBJECTIVE DISPLAY ==========
         objectives_data = task.get('objectives')
-        objective_title = 'No Goal'
-        objective_pre_number = 'N/A'
-        objective_id = task.get('objective_id', 'N/A')
+        objective_title = 'No Objective'
         
         if isinstance(objectives_data, dict):
-            objective_title = objectives_data.get('title', 'No Goal')
-            objective_pre_number = objectives_data.get('pre_number', 'N/A')
+            objective_title = objectives_data.get('title', 'No Objective')
             
-        st.write(f"**Objective:** {objective_title} (Pre-number: {objective_pre_number}, ID: {objective_id})")
+        st.write(f"**Objective:** {objective_title}")
+        # ========== END UPDATE ==========
         
         st.write(f"**Priority:** {task.get('priority', 'medium').title()}")
+        
+        # ========== ADDED: CREATED DATE BEFORE DEADLINE ==========
+        created_at = task.get('created_at', '')
+        if created_at:
+            try:
+                created_date = datetime.fromisoformat(created_at.replace('Z', '')).date()
+                st.write(f"**Created:** {created_date}")
+            except:
+                st.write(f"**Created:** {created_at[:10]}")
+        
         st.write(f"**Due Date:** {task.get('due_date', 'Not set')[:10]}")
         
         # Enhanced status display
@@ -2911,7 +3164,7 @@ def show_employee_progress_update_form(task, task_manager, update_key):
 # ========== PROPOSAL AND PROGRESS FUNCTIONS ==========
 
 def show_task_proposal_form():
-    """Form for employees to propose new tasks"""
+    """Form for employees to propose new tasks - REMOVED ESTIMATED TIME"""
     st.subheader("💡 Propose New Task")
     
     # Get goals for proposal
@@ -2935,11 +3188,11 @@ def show_task_proposal_form():
             priority = st.selectbox("Suggested Priority", ["low", "medium", "high"])
             due_date = st.date_input("Suggested Due Date", min_value=datetime.now().date())
             goal_id = st.selectbox("Attach to Goal", 
-                                 ["None"] + [f"{g['id']} - {g['title']}" for g in goals])
+                                 ["None"] + [f"{g['title']} (Pre-{g.get('pre_number', 'N/A')})" for g in goals])
         with col2:
-            estimated_hours = st.number_input("Estimated Hours", min_value=1, max_value=100, value=8)
+            # REMOVED: Estimated Hours field
             assign_suggestion = st.selectbox("Suggest Assignment", 
-                                           ["Myself"] + [f"{e['id']} - {e['name']} ({e['role']})" 
+                                           ["Myself"] + [f"{e['name']} ({e['role']})" 
                                                         for e in employees if e.get('is_active', True)])
         
         submitted = st.form_submit_button("📤 Submit Proposal")
@@ -2949,24 +3202,38 @@ def show_task_proposal_form():
                 st.error("Please fill in required fields")
                 return
             
-            # Prepare task data
+            # Prepare task data - REMOVED estimated_hours
             task_data = {
                 'task_description': f"{task_description} - {detailed_description}",
                 'priority': priority,
-                'due_date': due_date.isoformat(),
-                'estimated_hours': estimated_hours
+                'due_date': due_date.isoformat()
+                # estimated_hours removed as requested
             }
             
-            # Handle assignment suggestion
+            # Handle assignment suggestion - UPDATED: No ID in display
             if assign_suggestion != "Myself":
-                task_data['assigned_to'] = assign_suggestion.split(' - ')[0]
+                # Extract employee name from display to find ID
+                employee_name = assign_suggestion.split(' (')[0]
+                employee = next((e for e in employees if e['name'] == employee_name), None)
+                if employee:
+                    task_data['assigned_to'] = employee['id']
+                else:
+                    st.error("Selected employee not found")
+                    return
             else:
                 user_data = st.session_state.get('user_data', {})
                 task_data['assigned_to'] = user_data.get('employee_id')
             
-            # Add goal if selected
+            # Add goal if selected - UPDATED: Extract ID from display
             if goal_id != "None":
-                task_data['objective_id'] = goal_id.split(' - ')[0]
+                # Extract goal title to find ID
+                goal_title = goal_id.split(' (Pre-')[0]
+                goal = next((g for g in goals if g['title'] == goal_title), None)
+                if goal:
+                    task_data['objective_id'] = goal['id']
+                else:
+                    st.error("Selected goal not found")
+                    return
             
             result = task_manager.create_task(task_data)
             
@@ -2975,6 +3242,7 @@ def show_task_proposal_form():
                 st.balloons()
             else:
                 st.error(f"❌ Failed to submit proposal: {result.get('error')}")
+
 
 def show_employee_progress():
     """Employee progress tracking"""
@@ -3170,7 +3438,7 @@ def show_task_management():
 
 
 def show_manual_task_assignment():
-    """Manual task assignment interface"""
+    """Manual task assignment interface - UPDATED TO HIDE IDs"""
     st.subheader("👥 Manual Task Assignment")
     
     # Get employees for assignment
@@ -3190,17 +3458,18 @@ def show_manual_task_assignment():
         
         col1, col2 = st.columns(2)
         with col1:
-            # Multiple assignees
+            # Multiple assignees - UPDATED: No IDs in display
             assigned_employees = st.multiselect(
                 "Assign to employees*",
-                [f"{e['id']} - {e['name']} ({e['role']})" for e in active_employees],
+                [f"{e['name']} ({e['role']})" for e in active_employees],
                 help="Select one or more employees to assign this task to"
             )
             
             priority = st.selectbox("Priority", ["low", "medium", "high"])
             
-            goal_id = st.selectbox("Attach to Goal", 
-                                 ["None"] + [f"{g['id']} - {g['title']}" for g in goals])
+            # UPDATED: Goal selection without IDs
+            goal_options = ["None"] + [f"{g['title']} (Pre-{g.get('pre_number', 'N/A')})" for g in goals]
+            selected_goal = st.selectbox("Attach to Goal", goal_options)
         
         with col2:
             due_date = st.date_input("Due Date*", min_value=datetime.now().date())
@@ -3218,8 +3487,16 @@ def show_manual_task_assignment():
                 st.error("Please assign the task to at least one employee")
                 return
             
-            # Extract employee IDs from selection
-            employee_ids = [emp.split(' - ')[0] for emp in assigned_employees]
+            # Extract employee IDs from selection - UPDATED: Convert display to IDs
+            employee_ids = []
+            for emp_display in assigned_employees:
+                emp_name = emp_display.split(' (')[0]
+                emp = next((e for e in active_employees if e['name'] == emp_name), None)
+                if emp:
+                    employee_ids.append(emp['id'])
+                else:
+                    st.error(f"Employee {emp_name} not found")
+                    return
             
             task_data = {
                 'task_description': task_description,
@@ -3231,9 +3508,15 @@ def show_manual_task_assignment():
                 'status': status
             }
             
-            # Add goal if selected
-            if goal_id != "None":
-                task_data['objective_id'] = goal_id.split(' - ')[0]
+            # Add goal if selected - UPDATED: Convert display to ID
+            if selected_goal != "None":
+                goal_title = selected_goal.split(' (Pre-')[0]
+                goal = next((g for g in goals if g['title'] == goal_title), None)
+                if goal:
+                    task_data['objective_id'] = goal['id']
+                else:
+                    st.error("Selected goal not found")
+                    return
             
             result = task_manager.create_task(task_data)
             
@@ -3242,6 +3525,7 @@ def show_manual_task_assignment():
                 st.balloons()
             else:
                 st.error(f"❌ Failed to create task: {result.get('error')}")
+
 
 
 def show_admin_notifications():

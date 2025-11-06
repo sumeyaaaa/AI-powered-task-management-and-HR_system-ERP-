@@ -327,7 +327,13 @@ def show_employee_profile():
         st.write(f"**Title:** {employee.get('title', 'Not specified')}")
         st.write(f"**Location:** {employee.get('location', 'Not specified')}")
         st.write(f"**Experience:** {employee.get('experience_years', 0)} years")
-        
+          # ========== UPDATED: JD DISPLAY LIKE LINKEDIN ==========
+        job_description_url = employee.get('job_description_url', '')
+        if job_description_url:
+            st.write("**Job Description:**")
+            st.markdown(f"[🔗 View My Job Description]({job_description_url})", unsafe_allow_html=True)
+        else:
+            st.write("**Job Description:** Not available")
         if employee.get('linkedin_url'):
             st.markdown(f"**LinkedIn:** [View Profile]({employee['linkedin_url']})")
         
