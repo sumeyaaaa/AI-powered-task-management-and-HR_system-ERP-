@@ -219,24 +219,10 @@ class TaskManager:
             # Always return a dictionary, never None
             return {'success': False, 'error': str(e), 'notes': [], 'total': 0}
 
-    def add_task_note(self, task_id: str, notes: str, progress: int = None, attached_to: str = None, attached_to_multiple: list = None):
-        """Add task note with optional employee attachments for notifications"""
+    def add_task_note(self, task_id: str, notes: str, progress: int = None):
         try:
-            data = {
-                'notes': notes,
-                'progress': progress,
-                'attached_to': attached_to,
-                'attached_to_multiple': attached_to_multiple or []
-            }
-            # Remove None values
-            data = {k: v for k, v in data.items() if v is not None}
-            
-            response = requests.post(
-                f"{self.backend_url}/api/tasks/{task_id}/add-note", 
-                json=data, 
-                headers=self.get_auth_headers(), 
-                timeout=15
-            )
+            data = {'notes': notes, 'progress': progress}
+            response = requests.post(f"{self.backend_url}/api/tasks/{task_id}/add-note", json=data, headers=self.get_auth_headers(), timeout=15)
             return response.json()
         except Exception as e:
             return {'success': False, 'error': str(e)}
@@ -363,6 +349,27 @@ class TaskManager:
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
+    def add_task_note_with_attachments(self, task_id: str, notes: str, progress: int = None, attached_to: str = None, attached_to_multiple: list = None):
+        """Add a task note with employee attachments"""
+        try:
+            data = {
+                'notes': notes,
+                'progress': progress,
+                'attached_to': attached_to,
+                'attached_to_multiple': attached_to_multiple or []
+            }
+            # Remove None values
+            data = {k: v for k, v in data.items() if v is not None}
+            
+            response = requests.post(
+                f"{self.backend_url}/api/tasks/{task_id}/add-note", 
+                json=data, 
+                headers=self.get_auth_headers(), 
+                timeout=15
+            )
+            return response.json()
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
     def get_tasks_filtered(self, objective_id=None, priority=None, created_date=None):
         """Get tasks with objective filtering - NEW METHOD"""
         try:
@@ -1141,12 +1148,12 @@ def show_approve_assignment_form(task, task_manager, task_key):
                 default_employees = [key]
                 break
     
+    # Multiple assignees selection
     assigned_employees = st.multiselect(
         "Assign to employees*",
         options=list(employee_options.keys()),
         default=default_employees,
-        help="Select one or more employees for this task",
-        key="task_assignees"
+        help="Select one or more employees for this task"
     )
     
     # Show AI recommendations summary if available
@@ -2690,7 +2697,7 @@ def show_admin_edit_form(task, task_manager, edit_key):
             st.rerun()
 
 def show_attachments_tab(task, task_manager):
-    """Show attachments tab for a task with simplified automatic notifications"""
+    """Show attachments tab for a task with progress update form for employees"""
     st.subheader("📎 Task Attachments & Progress")
     
     # Load attachments
@@ -2698,6 +2705,7 @@ def show_attachments_tab(task, task_manager):
     
     if not attachments_data.get('success'):
         st.error(f"Failed to load attachments: {attachments_data.get('error')}")
+        # Still show progress form even if attachments fail
     else:
         attachments = attachments_data.get('attachments', [])
         
@@ -2734,16 +2742,8 @@ def show_attachments_tab(task, task_manager):
                     
                     st.markdown("---")
     
-    # File upload section with simplified notifications
+    # File upload section
     st.subheader("📤 Upload New File")
-    
-    # SIMPLIFIED NOTIFICATION INFO
-    user_role = st.session_state.get('user_role')
-    if user_role == 'employee':
-        st.success("🔔 **Automatic Notification:** File uploads will automatically notify all admins.")
-    elif user_role in ['admin', 'superadmin']:
-        st.success("🔔 **Automatic Notification:** File uploads will automatically notify all assigned employees.")
-    
     with st.form(f"upload_form_{task['id']}"):
         uploaded_file = st.file_uploader(
             "Choose file", 
@@ -2751,24 +2751,24 @@ def show_attachments_tab(task, task_manager):
             key=f"file_upload_{task['id']}"
         )
         
-        file_notes = st.text_input(
-            "File Description (Optional)",
-            placeholder="Brief description of the file...",
-            key=f"file_notes_{task['id']}"
+        notes = st.text_area(
+            "Upload notes (optional)",
+            placeholder="Add any notes about this file...",
+            key=f"upload_notes_{task['id']}"
         )
         
         if st.form_submit_button("📤 Upload File"):
             if uploaded_file:
-                result = task_manager.upload_task_file(task['id'], uploaded_file, file_notes)
+                result = task_manager.upload_task_file(task['id'], uploaded_file, notes)
                 if result.get('success'):
-                    st.success("✅ File uploaded successfully! Relevant team members have been automatically notified.")
+                    st.success("✅ File uploaded successfully!")
                     st.rerun()
                 else:
                     st.error(f"❌ Upload failed: {result.get('error')}")
             else:
                 st.error("Please select a file to upload")
     
-    # ========== KEEP PROGRESS UPDATE FORM FOR EMPLOYEES ==========
+    # ========== ADD PROGRESS UPDATE FORM FOR EMPLOYEES ==========
     if st.session_state.get('user_role') == 'employee':
         st.markdown("---")
         st.subheader("📈 Update Progress & Add Note")
@@ -2787,7 +2787,7 @@ def show_attachments_tab(task, task_manager):
         else:
             col1, col2 = st.columns([3, 1])
             with col1:
-                st.info("Update your task progress and add notes here. All admins will be automatically notified.")
+                st.info("Update your task progress and add notes here")
             with col2:
                 if st.button("✏️ Update Progress", key=f"start_update_{task['id']}", use_container_width=True):
                     st.session_state[update_key]['updating'] = True
@@ -2828,33 +2828,17 @@ def show_notes_tab(task, task_manager):
         show_note_with_attachments(note, task_manager)
 
 def show_admin_note_form(task, task_manager):
-    """Show admin note form - SIMPLIFIED WITH AUTOMATIC BACKEND NOTIFICATIONS"""
+    """Show admin note form with employee attachment feature"""
     st.subheader("💬 Add Note as Admin")
     
-    # Get available employees for display only
+    # Get available employees for attachment
     employees_data = task_manager.get_available_employees_for_attachment(task['id'])
     available_employees = employees_data.get('employees', []) if employees_data.get('success') else []
-    
-    # Get assigned employees for display only (backend handles notifications automatically)
-    assigned_employee_names = []
-    
-    # Primary assigned employee
-    if task.get('assigned_to'):
-        emp = next((e for e in available_employees if e['id'] == task['assigned_to']), None)
-        if emp:
-            assigned_employee_names.append(emp['name'])
-    
-    # Multiple assigned employees
-    if task.get('assigned_to_multiple'):
-        for emp_id in task['assigned_to_multiple']:
-            emp = next((e for e in available_employees if e['id'] == emp_id), None)
-            if emp and emp['name'] not in assigned_employee_names:
-                assigned_employee_names.append(emp['name'])
     
     with st.form(f"admin_note_form_{task['id']}"):
         notes = st.text_area(
             "Note Content*",
-            placeholder="Add your note here... This will automatically notify all assigned employees.",
+            placeholder="Add your note here... This will be visible to assigned employees and create a conversation thread.",
             height=150,
             key=f"admin_notes_{task['id']}"
         )
@@ -2868,45 +2852,110 @@ def show_admin_note_form(task, task_manager):
             key=f"admin_progress_{task['id']}"
         )
         
-        # AUTOMATIC NOTIFICATION INFO - SIMPLIFIED
-        st.subheader("🔔 Automatic Notifications")
+        # Employee Attachment Section - Enhanced for conversation
+        st.subheader("👥 Notify Team Members")
+        st.info("Select team members to specifically notify about this note. This creates a conversation thread.")
         
-        if assigned_employee_names:
-            st.success(f"**Assigned employees will be notified:** {', '.join(assigned_employee_names)}")
-            st.info("✅ Backend automatically notifies all assigned employees when admin adds a note.")
-        else:
-            st.warning("⚠️ No employees assigned to this task - no one to notify")
+        # Create employee options
+        employee_options = {f"{emp['name']} ({emp['role']})": emp['id'] for emp in available_employees}
         
-        if st.form_submit_button("📝 Post Note & Notify Team", type="primary", use_container_width=True):
+        # Get task assignees for default selection
+        default_assignees = []
+        if task.get('assigned_to'):
+            emp_id = task['assigned_to']
+            emp = next((e for e in available_employees if e['id'] == emp_id), None)
+            if emp:
+                default_assignees.append(f"{emp['name']} ({emp['role']})")
+        
+        if task.get('assigned_to_multiple'):
+            for emp_id in task['assigned_to_multiple']:
+                emp = next((e for e in available_employees if e['id'] == emp_id), None)
+                if emp and f"{emp['name']} ({emp['role']})" not in default_assignees:
+                    default_assignees.append(f"{emp['name']} ({emp['role']})")
+        
+        # Multiple employee selection for conversation
+        attached_employees = st.multiselect(
+            "Team Members to Notify*",
+            options=list(employee_options.keys()),
+            default=default_assignees,
+            help="Selected employees will receive notifications and can continue the conversation"
+        )
+        
+        # Show conversation preview
+        if attached_employees:
+            st.success(f"💬 Conversation with: {', '.join([name.split(' (')[0] for name in attached_employees])}")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            submit_note = st.form_submit_button(
+                "📝 Post Note & Notify Team", 
+                type="primary",
+                use_container_width=True
+            )
+        
+        with col2:
+            if st.form_submit_button("💾 Save Note Only", use_container_width=True):
+                # This will be handled separately if needed
+                pass
+        
+        if submit_note:
             if not notes.strip():
                 st.error("Please enter note content")
                 return
                 
-            # SIMPLIFIED: Backend handles automatic notifications to assigned employees
-            result = task_manager.add_task_note(
+            if not attached_employees:
+                st.error("Please select at least one team member to notify")
+                return
+            
+            # Prepare attachment data
+            attached_employee_ids = [employee_options[emp] for emp in attached_employees]
+            
+            # Use the first employee as primary, rest as multiple
+            attached_to = attached_employee_ids[0] if attached_employee_ids else None
+            attached_to_multiple = attached_employee_ids[1:] if len(attached_employee_ids) > 1 else []
+            
+            # Add the note with attachments
+            result = task_manager.add_task_note_with_attachments(
                 task_id=task['id'],
                 notes=notes.strip(),
-                progress=new_progress if new_progress != current_progress else None
-                # No attached_to parameters - backend handles automatically
+                progress=new_progress if new_progress != current_progress else None,
+                attached_to=attached_to,
+                attached_to_multiple=attached_to_multiple
             )
             
             if result.get('success'):
-                if assigned_employee_names:
-                    st.toast("✅ Note posted! Assigned employees notified.", icon="💬")
-                else:
-                    st.toast("✅ Note posted! (No assigned employees to notify)", icon="💬")
+                st.toast("✅ Note posted! Team members notified.", icon="💬")
                 st.balloons()
                 st.rerun()
             else:
                 st.error(f"❌ Failed to post note: {result.get('error')}")
 
 def show_note_with_attachments(note, task_manager):
-    """Display a single note - SIMPLIFIED WITHOUT ATTACHMENT FEATURES"""
+    """Display a single note with enhanced conversation features"""
     with st.container():
+        # Use different background colors for different note types
+        is_specially_attached = note.get('is_attached_to_me', False)
+        is_admin_note = note.get('employee_role') in ['admin', 'superadmin']
+        
+        # Create a visual distinction
+        if is_specially_attached:
+            st.markdown("""
+            <style>
+            .specially-attached {
+                background-color: #f0f8ff;
+                padding: 10px;
+                border-radius: 10px;
+                border-left: 4px solid #2196F3;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            st.markdown('<div class="specially-attached">', unsafe_allow_html=True)
+        
         col1, col2 = st.columns([3, 1])
         
         with col1:
-            # Note content
+            # Note content with better formatting
             note_text = note.get('notes', '')
             if note_text:
                 st.write(note_text)
@@ -2917,8 +2966,16 @@ def show_note_with_attachments(note, task_manager):
             if note.get('progress') is not None:
                 st.write(f"**Progress update:** {note['progress']}%")
             
+            # Enhanced attachment indicator
+            if note.get('has_attachments'):
+                attachments_count = note.get('attachments_count', 0)
+                st.info(f"📎 This update has {attachments_count} attachment(s)")
+            
+            # Enhanced employee attachment information
+            show_note_attachment_info(note)
+            
         with col2:
-            # Metadata
+            # Enhanced metadata with role indicator
             employee_name = note.get('employee_name', 'Unknown')
             employee_role = note.get('employee_role', 'N/A')
             created_at = note.get('created_at', '')
@@ -2943,6 +3000,13 @@ def show_note_with_attachments(note, task_manager):
                     st.write(f"**Date:** {created_at[:16]}")
             else:
                 st.write("**Date:** Unknown")
+            
+            # Special attachment badge
+            if note.get('is_attached_to_me'):
+                st.success("📨 Sent to you")
+        
+        if is_specially_attached:
+            st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown("---")
 
@@ -3062,29 +3126,17 @@ def show_employee_task_details_tab(task, task_manager):
                 # If date parsing fails, skip overdue check
                 pass
     
+    with col2:
+        # Removed progress update button - now in attachments tab
+        st.info("💡 Update progress in the 'Attachments & Progress' tab")
 
 def show_employee_progress_update_form(task, task_manager, update_key):
-    """Show employee progress update form with superadmin fallback"""
+    """Show employee progress update form with employee attachment feature"""
     st.write("### Update Progress")
     
-    # Get available employees for notification
+    # Get available employees for attachment
     employees_data = task_manager.get_available_employees_for_attachment(task['id'])
     available_employees = employees_data.get('employees', []) if employees_data.get('success') else []
-    
-    # Get admin employees - with fallback
-    admin_employees = [e for e in available_employees if e.get('role') in ['admin', 'superadmin']]
-    
-    # If no admins found in available employees, create a fallback admin
-    if not admin_employees:
-        st.warning("⚠️ No admin users found in employee list. Using system superadmin.")
-        admin_employees = [{
-            'id': 'superadmin-default',
-            'name': 'System Administrator',
-            'role': 'superadmin'
-        }]
-    
-    admin_employee_ids = [admin['id'] for admin in admin_employees]
-    admin_names = [admin['name'] for admin in admin_employees]
     
     new_progress = st.slider(
         "Completion %", 
@@ -3100,81 +3152,38 @@ def show_employee_progress_update_form(task, task_manager, update_key):
         key=f"notes_{task['id']}"
     )
     
-    # Employee Attachment Section for notifications
-    st.subheader("👥 Notify Team Members")
+    # Employee Attachment Section
+    st.subheader("👥 Notify Additional Colleagues")
+    st.info("Select colleagues who should be specifically notified about this update")
     
-    # AUTOMATIC: Show admins that will always be notified
-    if admin_names:
-        st.success(f"🔔 **Automatically notifying:** {', '.join(admin_names)}")
+    # Create employee options for the selectors
+    employee_options = {f"{emp['name']} ({emp['role']})": emp['id'] for emp in available_employees}
+    
+    # Single primary attachment
+    attached_to = st.selectbox(
+        "Primary Colleague to Notify",
+        options=["None"] + list(employee_options.keys()),
+        key=f"attached_to_{task['id']}"
+    )
+    
+    # Multiple additional attachments
+    attached_to_multiple = st.multiselect(
+        "Additional Colleagues to Notify",
+        options=list(employee_options.keys()),
+        key=f"attached_to_multiple_{task['id']}"
+    )
+    
+    # Show preview of selected employees
+    selected_employees = []
+    if attached_to != "None":
+        selected_employees.append(attached_to.split(' (')[0])
+    if attached_to_multiple:
+        selected_employees.extend([name.split(' (')[0] for name in attached_to_multiple])
+    
+    if selected_employees:
+        st.success(f"📨 Will notify: {', '.join(selected_employees)} + Admin")
     else:
-        st.error("❌ Critical: No administrators available for notifications")
-    
-    st.info("Select additional team members to specifically notify about this progress update (optional).")
-    
-    # Create employee options (excluding admins and current user)
-    current_user_id = st.session_state.get('user_data', {}).get('employee_id')
-    additional_employees = [e for e in available_employees if e['id'] not in admin_employee_ids and e['id'] != current_user_id]
-    employee_options = {f"{emp['name']} ({emp['role']})": emp['id'] for emp in additional_employees}
-    
-    # Get task assignees for default selection (excluding admins and current user)
-    default_assignees = []
-    
-    if task.get('assigned_to') and task['assigned_to'] != current_user_id and task['assigned_to'] not in admin_employee_ids:
-        emp_id = task['assigned_to']
-        emp = next((e for e in additional_employees if e['id'] == emp_id), None)
-        if emp:
-            default_assignees.append(f"{emp['name']} ({emp['role']})")
-    
-    if task.get('assigned_to_multiple'):
-        for emp_id in task['assigned_to_multiple']:
-            if emp_id != current_user_id and emp_id not in admin_employee_ids:
-                emp = next((e for e in additional_employees if e['id'] == emp_id), None)
-                if emp and f"{emp['name']} ({emp['role']})" not in default_assignees:
-                    default_assignees.append(f"{emp['name']} ({emp['role']})")
-    
-        additional_attached_employees = st.multiselect(
-            "Additional Team Members to Notify (Optional)",
-            options=list(employee_options.keys()),
-            default=default_assignees,
-            help="Selected employees will receive additional notifications about this progress update",
-            key=f"progress_notify_{task['id']}"
-        )
-    
-    # Combine automatic (admins) and optional employees
-    all_attached_employee_ids = admin_employee_ids.copy()  # AUTOMATIC: Always notify all admins
-    
-    additional_employee_ids = [employee_options[emp] for emp in additional_attached_employees]
-    all_attached_employee_ids.extend(additional_employee_ids)
-    
-    # Remove duplicates and current user
-    all_attached_employee_ids = list(set(all_attached_employee_ids))
-    if current_user_id and current_user_id in all_attached_employee_ids:
-        all_attached_employee_ids.remove(current_user_id)
-    
-    # Show final notification preview
-    if all_attached_employee_ids:
-        final_names = []
-        for emp_id in all_attached_employee_ids:
-            # Handle both real employees and fallback admin
-            if emp_id == 'superadmin-default':
-                final_names.append('System Administrator')
-            else:
-                emp = next((e for e in available_employees if e['id'] == emp_id), None)
-                if emp:
-                    final_names.append(emp['name'])
-        
-        # Separate automatic admins from additional notifications
-        auto_admins = [name for name in final_names if name in admin_names or name == 'System Administrator']
-        additional_notified = [name for name in final_names if name not in admin_names and name != 'System Administrator']
-        
-        if auto_admins and additional_notified:
-            st.success(f"📨 **Automatic:** {', '.join(auto_admins)} | **Additional:** {', '.join(additional_notified)}")
-        elif auto_admins:
-            st.success(f"📨 Notifying: {', '.join(auto_admins)}")
-        else:
-            st.success(f"📨 Notifying: {', '.join(additional_notified)}")
-    else:
-        st.info("ℹ️ No one will be notified.")
+        st.info("ℹ️ Only admin will be notified of this update")
     
     col1, col2 = st.columns(2)
     
@@ -3183,28 +3192,31 @@ def show_employee_progress_update_form(task, task_manager, update_key):
             if not notes.strip():
                 st.error("Please enter progress notes")
                 return
+                
+            # Prepare attachment data
+            attached_to_id = employee_options[attached_to] if attached_to != "None" else None
+            attached_to_multiple_ids = [employee_options[emp] for emp in attached_to_multiple]
+                
+            # Prepare update data - only allowed fields for employees
+            update_data = {
+                'completion_percentage': new_progress,
+                'notes': notes.strip(),
+                'status': 'completed' if new_progress == 100 else ('in_progress' if new_progress > 0 else 'not_started'),
+                'attached_to': attached_to_id,
+                'attached_to_multiple': attached_to_multiple_ids
+            }
             
-            # Prepare notification recipients
-            attached_to = None
-            attached_to_multiple = []
-            if all_attached_employee_ids:
-                attached_to = all_attached_employee_ids[0]
-                attached_to_multiple = all_attached_employee_ids[1:]
-            
-            # Save progress note with attachments
-            result = task_manager.add_task_note(
-                task_id=task['id'],
-                notes=notes.strip(),
-                progress=new_progress,
-                attached_to=attached_to,
-                attached_to_multiple=attached_to_multiple
+            # Use the new method for notes with attachments
+            result = task_manager.add_task_note_with_attachments(
+                task['id'], 
+                notes.strip(),
+                new_progress,
+                attached_to_id,
+                attached_to_multiple_ids
             )
             
             if result.get('success'):
-                if all_attached_employee_ids:
-                    st.toast("✅ Progress updated! Team members notified.", icon="📩")
-                else:
-                    st.toast("✅ Progress updated (no notifications sent).", icon="✅")
+                st.toast("✅ Progress updated! Notifications sent to selected colleagues.", icon="📩")
                 st.session_state[update_key]['updating'] = False
                 st.rerun()
             else:
@@ -3516,8 +3528,7 @@ def show_manual_task_assignment():
             assigned_employees = st.multiselect(
                 "Assign to employees*",
                 [f"{e['name']} ({e['role']})" for e in active_employees],
-                help="Select one or more employees to assign this task to",
-                key="bulk_task_assignees"
+                help="Select one or more employees to assign this task to"
             )
             
             priority = st.selectbox("Priority", ["low", "medium", "high"])
