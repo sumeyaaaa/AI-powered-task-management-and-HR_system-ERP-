@@ -2,8 +2,6 @@
 .venv
 .devcontainer
 .devcontainer
-package-lock.json
-package.json
 node_modules
 AUTHENTICATION_FIXES.md
 REACT_LEARNING_GUIDE.md
