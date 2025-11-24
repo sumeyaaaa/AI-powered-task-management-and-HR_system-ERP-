@@ -1,0 +1,227 @@
+.employee-dashboard {
+    padding: var(--space-6);
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  
+  /* Quick Access */
+  .quick-access {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+  }
+  
+  .access-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background: var(--background-color);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    text-align: left;
+    width: 100%;
+  }
+  
+  .access-btn:hover {
+    border-color: var(--primary-color);
+    background: var(--surface-color);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+  
+  .access-icon {
+    font-size: var(--font-size-xl);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: var(--primary-color);
+    color: white;
+    border-radius: var(--radius-md);
+  }
+  
+  .access-text {
+    flex: 1;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  
+  .access-badge {
+    background: var(--error-color);
+    color: white;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    min-width: 24px;
+    text-align: center;
+  }
+  
+  /* Timeline */
+  .activity-timeline {
+    margin-top: var(--space-4);
+    position: relative;
+  }
+  
+  .activity-timeline::before {
+    content: '';
+    position: absolute;
+    left: 16px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--border-color);
+  }
+  
+  .timeline-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
+    position: relative;
+  }
+  
+  .timeline-marker {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+    flex-shrink: 0;
+  }
+  
+  .timeline-marker.completed {
+    background: var(--success-color);
+    color: white;
+  }
+  
+  .timeline-marker.assigned {
+    background: var(--warning-color);
+    color: white;
+  }
+  
+  .timeline-marker.updated {
+    background: var(--primary-color);
+    color: white;
+  }
+  
+  .timeline-content {
+    flex: 1;
+    padding-bottom: var(--space-2);
+  }
+  
+  .timeline-title {
+    font-weight: 500;
+    margin-bottom: var(--space-1);
+    color: var(--text-primary);
+  }
+  
+  .timeline-time {
+    font-size: var(--font-size-sm);
+    color: var(--text-muted);
+  }
+  
+  /* Performance Overview */
+  .performance-overview {
+    margin-top: var(--space-4);
+  }
+  
+  .performance-metric {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+  }
+  
+  .metric-label {
+    width: 150px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+  
+  .metric-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--border-color);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+  }
+  
+  .metric-fill {
+    height: 100%;
+    border-radius: var(--radius-full);
+    transition: width var(--transition-slow);
+  }
+  
+  .metric-fill.completion {
+    background: var(--success-color);
+  }
+  
+  .metric-fill.ontime {
+    background: var(--primary-color);
+  }
+  
+  .metric-fill.quality {
+    background: var(--warning-color);
+  }
+  
+  .metric-value {
+    width: 60px;
+    text-align: right;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  
+  /* Responsive Design */
+  @media (max-width: 768px) {
+    .employee-dashboard {
+      padding: var(--space-4);
+    }
+  
+    .quick-access {
+      grid-template-columns: 1fr;
+    }
+  
+    .performance-metric {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-2);
+    }
+  
+    .metric-label {
+      width: auto;
+    }
+  
+    .metric-value {
+      width: auto;
+      text-align: left;
+    }
+  
+    .access-btn {
+      padding: var(--space-3);
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .timeline-item {
+      flex-direction: column;
+      text-align: center;
+      gap: var(--space-2);
+    }
+  
+    .activity-timeline::before {
+      left: 50%;
+      transform: translateX(-50%);
+    }
+  
+    .timeline-marker {
+      align-self: center;
+    }
+  }

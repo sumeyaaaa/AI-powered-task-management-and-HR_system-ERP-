@@ -1,284 +1,219 @@
 # 🧪 LeanChem Enterprise Management System
 
-A comprehensive enterprise management platform built with **Flask (backend)** and **Streamlit (frontend)**, designed specifically for **LeanChem Ethiopia’s construction and coating chemical distribution business**.
+A modern HR, task, and ERP assistant for **LeanChem Ethiopia** combining a **Flask API** with a **React TypeScript frontend**. The platform centralizes workforce data, automates AI task creation, delivers RAG-based employee recommendations, and offers proactive notifications for both administrators and employees.
 
 ---
 
-## 🚀 Overview
-The **LeanChem Enterprise Management System** is a full-stack web application that streamlines employee management, task assignment, goal tracking, and team collaboration.  
-Built with modern web technologies, it features **AI-powered task classification**, **RAG-enhanced employee recommendations**, and **real-time notifications**.
+## 🚀 Highlights
+
+- 👥 **Employee 360** – Rich profiles, JD links, skills, notes, photo management
+- 🎯 **AI Task Builder** – Predefined process templates & “Let AI classify tasks” workflow
+- 📊 **Interactive Admin Dashboard** – Live KPIs, status filters, strategic insights
+- 🔔 **Real-time Notifications** – Inbox + bell + deep links to specific tasks (admin & employee)h
+- 🤖 **RAG Recommendations** – Role-first matching using Supabase JD data and AI metadata
+- 📎 **Task Collaboration** – Attachments, notes, status changes trigger notifications
+- 🔐 **Role-based access** – Superadmin/Admin vs Employee portals with JWT auth
 
 ---
 
-## 🌟 Key Features
-
-- 👥 **Employee Management** – Complete employee profiles with skills tracking  
-- 🎯 **AI Task Management** – Intelligent goal classification and task breakdown  
-- 🤖 **RAG Recommendations** – AI-powered employee matching using job descriptions  
-- 🔔 **Real-time Notifications** – In-app notifications with task navigation  
-- 📊 **Analytics Dashboard** – Comprehensive reporting and insights  
-- 🔐 **Role-based Access** – Secure multi-level user permissions  
-
----
-
-## 🏗️ Project Structure
+## 🧱 Monorepo Layout
 
 ```
-├── .env                      # Environment variables (never commit!)
-├── .gitignore                # Git ignore rules
-├── requirements.txt          # Python dependencies
-├── README.md                 # Project documentation
-├── image/                    # Logo of LeanChem
-├── utils/                    # 🔧 Shared utilities (backend & frontend)
-└── tests/                    # Unit/integration tests
-
-📁 backend/
-    ├── app.py                 # Application entry point
-    ├── auth.py                # Authentication & authorization
-    ├── employee_routes_fixed.py  # Employee management endpoints
-    ├── task_routes.py         # Task management & AI integration
-    ├── notification_routes.py # Real-time notifications
-    └── config.py              # Configuration settings
-
-📁 frontend/
-    ├── app.py                 # Main Streamlit application
-    ├── auth.py                # Authentication UI & session
-    ├── employee_management.py # Employee UI components
-    ├── task_management.py     # Task management UI
-    ├── notification_management.py # Notifications interface
-    └── config.py              # Configuration settings
+├── backend/                      # Flask + Supabase API
+│   ├── app.py                    # App factory, auth endpoints, profile APIs
+│   ├── auth.py                   # JWT helpers, decorators, token validation
+│   ├── employee_routes_fixed.py  # Employee CRUD + photo/JD helpers
+│   ├── task_routes.py            # AI generation, predefined processes, attachments
+│   ├── notification_routes.py    # Notification ingestion + delivery rules
+│   └── predefined_processes.py   # Order-to-delivery steps, reusable templates
+│
+├── frontedn_react/               # React 18 + TypeScript SPA
+│   ├── src/
+│   │   ├── pages/Admin/…         # Admin Dashboard, Task Mgmt, Notifications
+│   │   ├── pages/Employee/…      # Employee Profile, Tasks, Notifications
+│   │   ├── components/…          # Task builders, cards, RAG widgets, layout
+│   │   ├── contexts/             # Auth + Notifications (polling, navigation)
+│   │   ├── services/             # Axios wrappers (auth, tasks, employees, notifications)
+│   │   └── Types/                # Central TypeScript interfaces
+│   └── public/                   # Static assets, favicon, hero images
+│
+├── AUTHENTICATION_FIXES.md       # Current hardening notes & deployment checklist
+├── REACT_LEARNING_GUIDE.md       # Walkthrough for learning React via this project
+├── requirements.txt              # Backend dependencies
+├── package.json                  # Frontend dependencies (inside `frontedn_react/`)
+└── README.md                     # This file
 ```
+
+> **Naming note:** historical files under `frontend/` (Streamlit) remain for reference, but the active UI lives inside `frontedn_react/`.
 
 ---
 
-## 🛠️ Technology Stack
+## 🛠️ Tech Stack
 
 ### Backend
-- **Python 3.9+**
-- **Flask** – Web framework  
-- **Supabase** – PostgreSQL database & storage  
-- **JWT** – Authentication  
-- **OpenAI GPT-3.5/4** – AI task classification  
-- **PyPDF2 / python-docx** – Document processing for RAG  
+- Python 3.10+, Flask, Supabase Python SDK
+- JWT (PyJWT) for stateless auth
+- OpenAI / custom AI helpers for classification
+- RAG utilities (PyPDF2, python-docx) for JD parsing
 
 ### Frontend
-- **Streamlit** – Web application framework  
-- **Requests** – HTTP client  
-- **Pandas** – Data manipulation  
-- **Plotly** – Interactive visualization  
+- React 18 + TypeScript + Vite tooling
+- React Router v6, Context API, hooks (`useState`, `useEffect`, `useMemo`, `useCallback`)
+- Axios with interceptors, Ant Design–style primitives + custom UI kit
+- CSS modules per feature (TaskManagement, Dashboard, Notifications, Profile)
 
 ---
 
-## 📦 Installation & Setup
+## ⚙️ Environment Variables
 
-### Prerequisites
-- Python 3.9 or higher  
-- Supabase account and project  
-- OpenAI API key  
-- Git  
+Create `.env` files both in `backend/` and `frontedn_react/`.
 
-### 1. Clone the Repository
+### Backend `.env`
+```
+FLASK_SECRET_KEY=change-me
+SUPERADMIN_EMAIL=admin@leanchem.com
+SUPERADMIN_PASSWORD=super-secure-password
+DEFAULT_PASSWORD=1234
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_SERVICE_KEY=SUPABASE_SERVICE_ROLE_KEY
+OPENAI_API_KEY=sk-...
+```
+
+### Frontend `.env`
+```
+REACT_APP_BACKEND_URL=http://localhost:5000
+```
+
+> Store secrets securely (1Password, Vault, AWS Secrets Manager) for production.
+
+---
+
+## 🧑‍💻 Local Development
+
+### 1. Clone
 ```bash
 git clone https://github.com/leanchem/enterprise-management.git
 cd enterprise-management
 ```
 
-### 2. Backend Setup
+### 2. Backend
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env
+flask --app app run --debug       # or python app.py
 ```
-Edit `.env` with your credentials.
+Backend runs at **http://localhost:5000**
 
-### 3. Frontend Setup
+### 3. Frontend (React)
 ```bash
-cd frontend
-pip install -r requirements.txt
-cp .env.example .env
+cd ../frontedn_react
+npm install
+npm run dev
 ```
-Edit `.env` with your credentials.
+Frontend runs at **http://localhost:3000**
 
-### 4. Environment Configuration
-```
-# Backend (.env)
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_SERVICE_KEY=your_supabase_service_key
-OPENAI_API_KEY=your_openai_api_key
-JWT_SECRET_KEY=your_jwt_secret_key
-BACKEND_URL=http://localhost:5000
-
-# Frontend (.env)
-BACKEND_URL=http://localhost:5000
-```
+React dev server proxies API calls to the Flask backend via `REACT_APP_BACKEND_URL`.
 
 ---
 
-## 🚀 Running the Application
+## 🔐 Authentication Flow
 
-### Start Backend
+1. User logs in via `/api/auth/login`, receives JWT + role (`superadmin`, `admin`, `employee`)
+2. Token stored in `localStorage`; Axios attaches it via Authorization header
+3. `AuthContext` validates token on page refresh using `/api/auth/validate-token`
+4. Protected routes (`/admin/*`, `/employee/*`) guard access via `ProtectedRoute`
+5. Password changes propagate to Supabase; superadmin password also updates `.env`
+
+
+
+---
+
+## 🧩 Feature Walkthrough
+
+### Admin Portal
+- **Dashboard** – KPIs (active/inactive employees, task SLA panels, charts)
+- **Task Management** – AI Task Builder (cards, RAG button, strategic metadata)
+- **Notifications** – Inbox with “view task” deep links + highlight animation
+- **Employee Management** – (legacy Streamlit) + new React profile parity
+
+### Employee Portal
+- **My Profile** – Rich hero layout (photo, JD links, bio, skills, strengths)
+- **Task Management** – Assigned tasks, attachments, notes, propose task form
+- **Notifications** – Mirrors admin behavior but scoped to employee-centric alerts
+
+### AI + RAG
+- **Predefined processes** (e.g., order-to-delivery) enforce 13-step templates
+- **“Let AI classify tasks”** template polls backend until tasks insert
+- **RAG recommendations** query Supabase JDs and roles (role-first > department)
+- **AI Strategic Analysis** cards display metadata (process, KPIs, risks)
+
+---
+
+## 🧪 Testing & Quality
+
+- Backend: `pytest` (coming soon) + manual Postman collections
+- Frontend: `npm run lint`, TypeScript strict mode, manual QA flows
+- Linting: `read_lints` integration in CI ensures changed files stay clean
+
+Recommended manual test matrix:
+1. Superadmin login, navigate to task from notification, upload attachment
+2. Employee login, propose task, receive admin notification, respond
+3. AI goal classification path (predefined vs AI template) + RAG recommendations
+4. File upload & download, JD link management
+
+---
+
+## 🚢 Deployment Guide
+
+### Backend (Flask)
 ```bash
 cd backend
-python main.py
+pip install -r requirements.txt
+gunicorn --workers 4 --bind 0.0.0.0:5000 app:app
 ```
-Runs on: **http://localhost:5000**
+Recommended: host on Render, Railway, Fly.io, or EC2 with Nginx reverse proxy + HTTPS.
 
-### Start Frontend
+### Frontend (React)
 ```bash
-cd frontend
-streamlit run main.py
+cd frontedn_react
+npm run build
+npm run preview    # optional local check
 ```
-Runs on: **http://localhost:8501**
+Deploy `dist/` to Netlify, Vercel, or S3 + CloudFront. Ensure `REACT_APP_BACKEND_URL` points to the public API domain.
 
----
-
-## 📚 Usage Guide
-
-### 👨‍💼 For Administrators
-#### Employee Management
-- Add employees, upload photos, and manage activation status  
-- Job Descriptions with Google Drive integration  
-- Skill and experience tracking  
-
-#### Task Management
-- Set company goals with **AI classification**  
-- Auto-generate tasks per goal  
-- RAG-powered employee assignment  
-- Real-time progress tracking  
-
-#### Notifications
-- Organization-wide overview  
-- Bulk mark as read / delete  
-- Direct task navigation  
-
-### 👩‍🔧 For Employees
-#### Task Management
-- Personal dashboard for assigned tasks  
-- Update progress and upload files  
-- Collaborate via notes and mentions  
-
-#### Notifications
-- Real-time task updates  
-- Quick navigation and actions  
-
----
-
-## 🔧 API Documentation
-
-### Authentication
-| Method | Endpoint | Description |
-|--------|-----------|-------------|
-| POST | `/api/auth/login` | User authentication |
-| POST | `/api/auth/register` | User registration (admin only) |
-| GET | `/api/auth/verify` | Token verification |
-
-### Employee Management
-| Method | Endpoint | Description |
-|--------|-----------|-------------|
-| GET | `/api/employees` | List employees |
-| POST | `/api/employees` | Create new employee |
-| PUT | `/api/employees/{id}` | Update employee |
-| POST | `/api/employees/{id}/upload-photo` | Upload profile photo |
-
-### Task Management
-| Method | Endpoint | Description |
-|--------|-----------|-------------|
-| GET | `/api/tasks/goals` | Get company goals |
-| POST | `/api/tasks/goals/classify-only` | AI goal classification |
-| POST | `/api/tasks` | Create task |
-| PUT | `/api/tasks/{id}` | Update task progress |
-
-### Notifications
-| Method | Endpoint | Description |
-|--------|-----------|-------------|
-| GET | `/api/notifications` | List notifications |
-| PUT | `/api/notifications/{id}/read` | Mark as read |
-| PUT | `/api/notifications/read-all` | Mark all as read |
-
----
-
-## 🤖 AI Features
-
-### Strategic Goal Classification
-- Framework alignment with LeanChem’s 2025–2026 strategy  
-- Generates 3–5 actionable tasks per goal  
-- Compliance scoring (80% threshold)  
-- Q4 execution alignment  
-
-### RAG Employee Recommendations
-- JD document parsing and semantic analysis  
-- Skill & experience-based scoring  
-- Confidence-level reporting  
-
----
-
-## 🗄️ Database Schema
-
-| Table | Description |
-|--------|-------------|
-| `employees` | Employee profiles |
-| `objectives` | Company goals |
-| `action_plans` | Tasks and assignments |
-| `task_updates` | Task progress & notes |
-| `notifications` | System notifications |
-| `ai_meta` | AI operation logs |
-
-**Storage Buckets:**
-- `employee-photos` – Profile pictures  
-- `task-updates` – Task attachments  
-
----
-
-## 🔐 Security
-- JWT-based authentication  
-- Role-based access (Superadmin, Admin, Employee)  
-- Secure password hashing  
-- Token expiry & refresh system  
-
----
-
-## 🚢 Deployment
-
-### Using Docker
-```bash
-docker build -t leanchem-app .
-docker run -p 8501:8501 leanchem-app
-```
-
-### Production Environment Variables
-```
-SUPABASE_URL=your_production_url
-OPENAI_API_KEY=your_production_key
-```
+### Production Checklist
+- [ ] Update `.env` secrets (no defaults)
+- [ ] Enable HTTPS (certbot/Let’s Encrypt or CDN TLS)
+- [ ] Configure Supabase RLS / bucket policies
+- [ ] Run smoke tests (login, task creation, notifications)
+- [ ] Set up monitoring (Sentry, Logtail, New Relic, etc.)
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Backend Connection Errors
-```bash
-curl http://localhost:5000/api/health
-echo $SUPABASE_URL
-```
+| Problem | Resolution |
+|---------|------------|
+| Infinite login loop | Ensure backend running on `REACT_APP_BACKEND_URL` and `/api/auth/validate-token` reachable |
+| “Token missing” on protected API | Confirm Axios attaches token; check browser devtools → Network tab |
+| File uploads not showing | Backend expects `/upload-file` endpoint with `file` field; front-end already aligned |
+| Employees list empty on dashboard | Supabase response may wrap data; React normalizes via `Array.isArray` guard |
+| Notifications redirect to wrong page | Confirm `localStorage.current_task_id` set before navigation |
 
-### Authentication Issues
-- Ensure JWT keys match in frontend/backend  
-- Check token expiry and roles  
-
-### File Upload Problems
-- Verify Supabase bucket permissions  
-- Check file size (≤5MB) and MIME type  
+Additional deep dives live in `AUTHENTICATION_FIXES.md` and inline code comments.
 
 ---
 
-## 🆘 Getting Help
-- Search existing GitHub Issues  
-- Create a new Issue with detailed description  
+## 📚 Documentation Extras
+
+- `REACT_LEARNING_GUIDE.md` – Explains project architecture for learners transitioning from Streamlit to React
+- `AUTHENTICATION_FIXES.md` – Living document of auth changes, deployment steps, and security recommendations
 
 ---
 
 ## 📄 License
+
 **Proprietary & Confidential**  
-© LeanChem Ethiopia. All rights reserved.
+© LeanChem Ethiopia. All rights reserved. Unauthorized distribution prohibited.

@@ -1,0 +1,124 @@
+.sidebar {
+    width: 250px;
+    background: #2c3e50;
+    color: white;
+    transition: width 0.3s ease;
+    position: fixed;
+    height: 100vh;
+    overflow-y: auto;
+    z-index: 99;
+  }
+  
+  .sidebar.collapsed {
+    width: 64px;
+  }
+  
+  .sidebar-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 20px 0;
+  }
+  
+  .sidebar-logo {
+    padding: 0 20px 20px;
+    border-bottom: 1px solid #34495e;
+    margin-bottom: 20px;
+  }
+  
+  .sidebar-logo h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    color: #ecf0f1;
+  }
+  
+  .sidebar-nav ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  
+  .sidebar-nav li {
+    margin: 0;
+  }
+  
+  .nav-link {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    color: #bdc3c7;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    border-left: 3px solid transparent;
+  }
+  
+  .nav-link:hover {
+    background-color: #34495e;
+    color: white;
+  }
+  
+  .nav-link.active {
+    background-color: #3498db;
+    color: white;
+    border-left-color: #2980b9;
+  }
+  
+  .nav-icon {
+    font-size: 1.2rem;
+    min-width: 24px;
+    text-align: center;
+    margin-right: 12px;
+  }
+  
+  .sidebar.collapsed .nav-icon {
+    margin-right: 0;
+  }
+  
+  .nav-label {
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 20px;
+  }
+  
+  .sidebar-logout-btn {
+    background: #e74c3c;
+    border: none;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  
+  .sidebar-logout-btn:hover {
+    background: #c0392b;
+  }
+  
+  .sidebar.collapsed .sidebar-logout-btn {
+    justify-content: center;
+  }
+  
+  .sidebar.collapsed .sidebar-logout-btn span:not(.logout-icon) {
+    display: none;
+  }
+  
+  /* Responsive design */
+  @media (max-width: 768px) {
+    .sidebar {
+      transform: translateX(-100%);
+      width: 280px;
+    }
+    
+    .sidebar.open {
+      transform: translateX(0);
+    }
+    
+    .sidebar.collapsed {
+      width: 280px;
+      transform: translateX(-100%);
+    }
+  }

@@ -20,6 +20,7 @@ import requests
 import PyPDF2
 import docx
 from docx import Document
+from predefined_processes import get_predefined_processes_registry
 # Load environment variables
 load_dotenv()
 
@@ -810,6 +811,9 @@ def create_goal_classify_only():
         ai_meta_id = None
         
         if data.get('auto_classify') and client:
+            # Get template from frontend (defaults to 'auto' for AI classification)
+            template = data.get('template', 'auto')
+            
             # Create initial AI meta record according to schema
             initial_ai_meta = {
                 "source": "chatgpt-classify-only",
@@ -820,14 +824,16 @@ def create_goal_classify_only():
                     "goal_description": data.get('description', ''),
                     "goal_output": data.get('output', ''),
                     "goal_deadline": data.get('deadline'),
-                    "objective_number": next_objective_number,  # 🎯 INCLUDE NUMBER
+                    "objective_number": next_objective_number,
+                    "template": template,  # 🎯 ADD TEMPLATE INFO
                     "status": "starting"
                 },
                 "output_json": {
                     "status": "starting", 
                     "progress": 0, 
                     "goal_id": goal['id'],
-                    "objective_number": next_objective_number  # 🎯 INCLUDE NUMBER
+                    "objective_number": next_objective_number,
+                    "template": template
                 },
                 "confidence": None,
                 "created_at": datetime.utcnow().isoformat()
@@ -839,7 +845,7 @@ def create_goal_classify_only():
                 supabase.table("objectives").update({'ai_meta_id': ai_meta_id}).eq('id', goal['id']).execute()
                 goal['ai_meta_id'] = ai_meta_id
             
-            ai_tasks, ai_breakdown, ai_processing_time = classify_goal_to_tasks_only(goal, data, ai_meta_id)
+            ai_tasks, ai_breakdown, ai_processing_time = classify_goal_to_tasks_only(goal, data, ai_meta_id, template)
         
         return jsonify({
             'success': True,
@@ -855,7 +861,13 @@ def create_goal_classify_only():
         return jsonify({'success': False, 'error': str(e)}), 500
     
 def get_updated_standard_process():
-    """Return the updated standard process framework"""
+    """Return the updated standard process framework - DEPRECATED, use predefined_processes.py instead"""
+    # Import from predefined_processes module
+    from predefined_processes import get_order_to_delivery_process
+    return get_order_to_delivery_process()
+
+def get_updated_standard_process_old():
+    """Return the updated standard process framework - OLD VERSION"""
     return {
         "1. FINALIZE DEAL DOCUMENTATION (1 day)": {
             "responsible": "Account Executive",
@@ -1063,21 +1075,39 @@ Return ONLY valid JSON with exactly 13 tasks in this format:
         # Fallback to predefined 13-step process
         return generate_13_step_fallback_tasks(goal, goal_data, get_updated_standard_process(), ai_meta_id)
     
-def classify_goal_to_tasks_only(goal, goal_data, ai_meta_id):
+def classify_goal_to_tasks_only(goal, goal_data, ai_meta_id, template='auto'):
+    """
+    Classify goal to tasks based on template selection.
+    
+    Args:
+        goal: Goal/objective record
+        goal_data: Goal data dictionary
+        ai_meta_id: AI meta record ID
+        template: Template type ('auto' for AI classification, 'order_to_delivery' for predefined process, etc.)
+    """
     try:
         start_time = time.time()
         if not client:
             tasks, message = fallback_task_classification(goal_data)
             return tasks, message, time.time() - start_time
         
-        # 🎯 SMART DETECTION: Check if this is a delivery/procurement goal
-        is_delivery_goal = detect_delivery_goal(goal_data)
-        
-        if is_delivery_goal:
-            print(f"🎯 DELIVERY GOAL DETECTED: Using 13-step process")
-            return generate_13_step_delivery_tasks(goal, goal_data, ai_meta_id)
+        # 🎯 TEMPLATE-BASED ROUTING
+        if template == 'order_to_delivery' or template == 'order-to-delivery':
+            print(f"🎯 PREDEFINED PROCESS: Using Order-to-Delivery template")
+            return generate_predefined_process_tasks(goal, goal_data, ai_meta_id, 'order_to_delivery')
+        elif template == 'auto':
+            # 🎯 AI CLASSIFICATION: Fully rely on AI for task generation
+            print(f"🎯 AI CLASSIFICATION: Using full AI task generation with RAG")
+            return generate_ai_custom_tasks(goal, goal_data, ai_meta_id)
         else:
-            print(f"🎯 NON-DELIVERY GOAL: Using AI task generation")
+            # Check if template matches any predefined process
+            predefined_processes = get_predefined_processes_registry()
+            if template in predefined_processes:
+                print(f"🎯 PREDEFINED PROCESS: Using {template} template")
+                return generate_predefined_process_tasks(goal, goal_data, ai_meta_id, template)
+            else:
+                # Fallback to AI classification
+                print(f"🎯 UNKNOWN TEMPLATE '{template}': Falling back to AI classification")
             return generate_ai_custom_tasks(goal, goal_data, ai_meta_id)
         
     except Exception as e:
@@ -1222,6 +1252,7 @@ def fallback_task_classification(goal_data):
 
 def generate_custom_fallback_tasks(goal, goal_data, ai_meta_id):
     """Generate fallback tasks for non-delivery goals when AI fails"""
+    start_time = time.time()
     try:
         supabase = get_supabase_client()
         created_tasks = []
@@ -1476,8 +1507,159 @@ Return ONLY valid JSON with tasks that are appropriate for this specific goal.
         print(f"❌ Error in custom AI task generation: {e}")
         return generate_custom_fallback_tasks(goal, goal_data, ai_meta_id)
 
+def generate_predefined_process_tasks(goal, goal_data, ai_meta_id, process_name):
+    """
+    Generate tasks using a predefined process template.
+    Uses EXACT predefined steps - no adding or removing tasks.
+    Only customizes task descriptions for the specific objective.
+    
+    Args:
+        goal: Goal/objective record
+        goal_data: Goal data dictionary
+        ai_meta_id: AI meta record ID
+        process_name: Name of the predefined process (e.g., 'order_to_delivery')
+    
+    Returns:
+        tuple: (created_tasks, message, processing_time)
+    """
+    start_time = time.time()
+    supabase = get_supabase_client()
+    
+    try:
+        # Get the predefined process from registry
+        predefined_processes = get_predefined_processes_registry()
+        if process_name not in predefined_processes:
+            raise ValueError(f"Unknown predefined process: {process_name}")
+        
+        process_steps = predefined_processes[process_name]
+        objective_number = goal.get('pre_number', 'N/A')
+        goal_title = goal_data.get('title', '')
+        
+        # Extract customization info from goal title/description
+        # Example: "Order to Delivery - DGEDA" -> customize for "DGEDA"
+        customization_text = goal_title
+        if ' - ' in goal_title:
+            customization_text = goal_title.split(' - ', 1)[1]
+        elif 'for ' in goal_title.lower():
+            # Extract text after "for"
+            parts = goal_title.lower().split('for ', 1)
+            if len(parts) > 1:
+                customization_text = parts[1].split()[0]  # Get first word after "for"
+        
+        created_tasks = []
+        base_date = datetime.now()
+        
+        if ai_meta_id:
+            update_ai_progress(ai_meta_id, 30, f"Applying {process_name} process", 
+                             f"Generating {len(process_steps)} predefined tasks for {objective_number}")
+        
+        # Generate tasks using EXACT predefined steps
+        for i, (step_key, step_data) in enumerate(process_steps.items()):
+            # Calculate due date based on step timing
+            days_offset = i  # Default: sequential days
+            if '(1 day)' in step_key:
+                days_offset = i
+            elif '(2 days)' in step_key:
+                days_offset = i + 1
+            elif '(5 days)' in step_key:
+                days_offset = i + 4
+            elif '(0.5 day)' in step_key:
+                days_offset = i
+            
+            due_date = (base_date + timedelta(days=days_offset)).strftime('%Y-%m-%d')
+            
+            # Customize task description for specific objective
+            # Replace generic terms with customization text if needed
+            customized_activities = step_data['activities']
+            if customization_text and customization_text != goal_title:
+                # Add customization context (e.g., "for DGEDA")
+                customized_activities = f"{step_data['activities']} for {customization_text}"
+            
+            # Customize step key if needed
+            customized_step_key = step_key
+            if customization_text and customization_text != goal_title:
+                # Add customization to step title
+                customized_step_key = step_key.replace(":", f" for {customization_text}:")
+            
+            strategic_metadata = {
+                "required_skills": ["Process execution", "Coordination", step_data['responsible']],
+                "success_criteria": f"Complete {customized_activities} successfully",
+                "complexity": "medium",
+                "strategic_analysis": {
+                    "validation_score": f"{process_name} process applied",
+                    "context": f"Predefined {process_name} process for {goal_title}",
+                    "objective": goal_title,
+                    "process": customized_activities,
+                    "delivery": due_date,
+                    "reporting_requirements": step_data['deliverable'],
+                    "q4_execution_context": "Q4 2025 execution",
+                    "process_applied": f"{process_name.upper().replace('_', '-')} Standard Framework",
+                    "goal_type": process_name
+                },
+                "strategic_phase": f"Process Step {i+1}",
+                "key_stakeholders": [step_data['responsible']],
+                "potential_bottlenecks": ["Timeline constraints", "Coordination requirements"],
+                "resource_requirements": ["Standard process tools"],
+                "assigned_role": step_data['responsible'],  # 🎯 USE RECOMMENDED ROLE
+                "process_step": customized_step_key,
+                "information_requirements": f"Using {process_name} framework",
+                "context": f"Executing {customized_step_key} for {goal_title}",
+                "objective": goal_title,
+                "process": customized_activities,
+                "delivery": due_date,
+                "reporting_requirements": step_data['deliverable'],
+                "goal_type": process_name,
+                "predefined_process": True,  # 🎯 FLAG FOR RAG SYSTEM
+                "recommended_role": step_data['responsible']  # 🎯 FOR EMPLOYEE RECOMMENDATIONS
+            }
+            
+            task_record = {
+                "task_description": f"{customized_step_key}: {customized_activities}",
+                "objective_id": goal['id'],
+                "due_date": due_date,
+                "priority": "medium",
+                "estimated_hours": 8,
+                "status": "ai_suggested",
+                "completion_percentage": 0,
+                "ai_suggested": True,
+                "strategic_metadata": strategic_metadata
+            }
+            
+            task_result = supabase.table("action_plans").insert(task_record).execute()
+            if task_result.data:
+                created_tasks.append(task_result.data[0])
+        
+        # Update AI meta
+        if ai_meta_id:
+            supabase.table("ai_meta").update({
+                "output_json": {
+                    "status": f"{process_name}_completed",
+                    "tasks_generated": len(created_tasks),
+                    "goal_id": goal['id'],
+                    "goal_type": process_name,
+                    "process_applied": process_name,
+                    "framework_version": process_name,
+                    "predefined_process": True,
+                    "customization": customization_text
+                }
+            }).eq("id", ai_meta_id).execute()
+        
+        processing_time = time.time() - start_time
+        return created_tasks, f"Generated {len(created_tasks)} tasks using {process_name} predefined process", processing_time
+        
+    except Exception as e:
+        print(f"❌ Error generating predefined process tasks: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fallback to old method if new one fails
+        if process_name == 'order_to_delivery':
+            return generate_13_step_fallback_tasks(goal, goal_data, get_updated_standard_process(), ai_meta_id)
+        else:
+            raise e
+
 def generate_13_step_fallback_tasks(goal, goal_data, standard_process, ai_meta_id):
     """Fallback to generate exactly 13 tasks using predefined process"""
+    start_time = time.time()
     supabase = get_supabase_client()
     created_tasks = []
     
@@ -1804,8 +1986,13 @@ def create_task():
         if data.get('assigned_to_multiple'):
             assigned_to_multiple = [safe_uuid(uid) for uid in data.get('assigned_to_multiple', []) if safe_uuid(uid)]
         
+        # Handle both 'task_description' and 'description' fields
+        task_description = data.get('task_description') or data.get('description', '')
+        if not task_description:
+            return jsonify({'success': False, 'error': 'Task description is required'}), 400
+        
         task_data = {
-            "task_description": data['task_description'],
+            "task_description": task_description,
             "objective_id": objective_id,
             "assigned_to": assigned_to,
             "assigned_to_multiple": assigned_to_multiple,
@@ -1834,10 +2021,11 @@ def create_task():
         if result.data:
             # Create notification if assigned to someone
             if task_data['assigned_to']:
+                notification_message = f"New task assigned: {task_description[:100]}..."
                 create_enhanced_task_notification(
                     result.data[0]['id'],
                     "task_assigned",
-                    f"New task assigned: {data['task_description'][:100]}...",
+                    notification_message,
                     assigned_by=g.user.get('name', 'Admin')
                 )
             
@@ -3097,6 +3285,91 @@ def get_role_based_qualifications(task_description, employee, jd_text=None):
     
     return qualifications[:4]  # Limit to 4 key qualifications
 
+def get_role_based_recommendations_for_predefined_process(recommended_role, employees, task_description):
+    """
+    Get employee recommendations for predefined process tasks.
+    Returns exactly 1 employee with 100% fit score if they match the recommended role.
+    Uses recommended_role from strategic_metadata.
+    
+    Args:
+        recommended_role: The recommended role from predefined process
+        employees: List of all employees
+        task_description: Task description
+    
+    Returns:
+        list: List with 1 recommendation if match found, empty list otherwise
+    """
+    recommendations = []
+    
+    if not recommended_role:
+        return recommendations
+    
+    recommended_role_lower = recommended_role.lower().strip()
+    
+    # Find employees matching the recommended role exactly
+    for employee in employees:
+        employee_role = (employee.get('role') or '').lower().strip()
+        employee_title = (employee.get('title') or '').lower().strip()
+        
+        # Check for exact role match
+        if recommended_role_lower == employee_role:
+            recommendations.append({
+                'employee_id': employee['id'],
+                'employee_name': employee.get('name', 'Unknown'),
+                'employee_role': employee.get('role', ''),
+                'employee_department': employee.get('department', ''),
+                'fit_score': 100,  # 🎯 100% fit for predefined process role match
+                'confidence': 'high',
+                'reason': f"Perfect role match for predefined process: {recommended_role}",
+                'key_qualifications': [
+                    f"Role: {employee.get('role', 'N/A')}",
+                    f"Department: {employee.get('department', 'N/A')}",
+                    "Predefined Process Role Match"
+                ],
+                'skills_match': [],
+                'skills_match_list': [],
+                'rag_enhanced': False,  # Not using RAG for predefined processes
+                'rag_enhanced_score': None,
+                'role_based_assignment': True,  # 🎯 FLAG AS ROLE-BASED
+                'assignment_type': 'direct_role_assignment'  # 🎯 DIRECT ROLE ASSIGNMENT
+            })
+            # 🎯 RETURN ONLY 1 RECOMMENDATION FOR PREDEFINED PROCESSES
+            break
+    
+    # If no exact match, try partial match
+    if not recommendations:
+        for employee in employees:
+            employee_role = (employee.get('role') or '').lower().strip()
+            
+            # Check for partial role match (contains recommended role keywords)
+            role_keywords = recommended_role_lower.split()
+            matching_keywords = sum(1 for keyword in role_keywords if len(keyword) > 3 and keyword in employee_role)
+            
+            if matching_keywords >= len(role_keywords) * 0.6:  # 60% keyword match
+                recommendations.append({
+                    'employee_id': employee['id'],
+                    'employee_name': employee.get('name', 'Unknown'),
+                    'employee_role': employee.get('role', ''),
+                    'employee_department': employee.get('department', ''),
+                    'fit_score': 95,  # High fit for partial match
+                    'confidence': 'high',
+                    'reason': f"Strong role match for predefined process: {recommended_role}",
+                    'key_qualifications': [
+                        f"Role: {employee.get('role', 'N/A')}",
+                        f"Department: {employee.get('department', 'N/A')}",
+                        "Predefined Process Role Match (Partial)"
+                    ],
+                    'skills_match': [],
+                    'skills_match_list': [],
+                    'rag_enhanced': False,
+                    'rag_enhanced_score': None,
+                    'role_based_assignment': True,
+                    'assignment_type': 'direct_role_assignment'
+                })
+                break
+    
+    return recommendations
+
 def generate_role_based_reason(employee, jd_available, fit_score, task_description):
     """
     Generate reasoning focused on role and task alignment
@@ -3320,7 +3593,9 @@ def department_based_analysis(task_description, employees):
 def corrected_process_employee_recommendations_for_task(task, employees, ai_meta_id):
     """
     CORRECTED RAG-enhanced employee recommendation process
-    Uses role-based assignment first, department only as fallback
+    
+    For predefined processes: Uses recommended_role for role-based assignment (100% fit, 1 recommendation)
+    For AI-classified tasks: Uses full RAG with JD analysis for employee recommendations
     """
     try:
         supabase = get_supabase_client()
@@ -3328,29 +3603,52 @@ def corrected_process_employee_recommendations_for_task(task, employees, ai_meta
         
         print(f"👥 Processing CORRECTED RAG employee recommendations for task: {task['task_description'][:50]}...")
         
+        # Check if this is a predefined process task
+        strategic_meta = task.get('strategic_metadata', {}) or {}
+        is_predefined_process = strategic_meta.get('predefined_process', False)
+        recommended_role = strategic_meta.get('recommended_role') or strategic_meta.get('assigned_role')
+        
         # Step 1: Update progress
+        if is_predefined_process:
+            strategy = "role_based_predefined_process"
+            activity = f"Using role-based assignment for predefined process (Role: {recommended_role})"
+        else:
+            strategy = "full_rag_ai_classified"
+            activity = "Starting full RAG analysis with JD documents for AI-classified task"
+        
         update_data = {
             "output_json": {
                 "status": "processing",
                 "progress": 20,
-                "current_activity": "Starting corrected RAG analysis",
+                "current_activity": activity,
                 "task_id": task['id'],
                 "employees_analyzed": len(employees),
                 "rag_enhanced": True,
-                "assignment_strategy": "role_first_then_department"
+                "assignment_strategy": strategy,
+                "is_predefined_process": is_predefined_process
             },
             "updated_at": datetime.utcnow().isoformat()
         }
         supabase.table("ai_meta").update(update_data).eq("id", ai_meta_id).execute()
         
-        # Step 2: Get CORRECTED RAG-based recommendations
-        print(f"🔍 Calling enhanced_role_based_employee_recommendations for {len(employees)} employees...")
+        # Step 2: Get recommendations based on task type
+        if is_predefined_process and recommended_role:
+            # 🎯 PREDEFINED PROCESS: Use recommended role only (100% fit, 1 recommendation)
+            print(f"🎯 PREDEFINED PROCESS: Using role-based assignment for role: {recommended_role}")
+            rag_recommendations = get_role_based_recommendations_for_predefined_process(
+                recommended_role=recommended_role,
+                employees=employees,
+                task_description=task['task_description']
+            )
+        else:
+            # 🎯 AI-CLASSIFIED: Use full RAG with JD analysis
+            print(f"🔍 AI-CLASSIFIED TASK: Using full RAG analysis with JD documents")
         rag_recommendations = enhanced_role_based_employee_recommendations(
             task_description=task['task_description'],
             employees=employees
         )
         
-        print(f"✅ CORRECTED RAG function returned {len(rag_recommendations)} recommendations")
+        print(f"✅ Recommendation function returned {len(rag_recommendations)} recommendations")
         for rec in rag_recommendations:
             assignment_type = rec.get('assignment_type', 'analysis')
             role_based = rec.get('role_based_assignment', False)
@@ -3360,14 +3658,19 @@ def corrected_process_employee_recommendations_for_task(task, employees, ai_meta
         processing_time = time.time() - start_time
         
         # Update task with final recommendations
-        strategic_meta = task.get('strategic_metadata', {})
+        if not strategic_meta:
+            strategic_meta = {}
         strategic_meta['ai_recommendations'] = rag_recommendations
         strategic_meta['employee_recommendations_available'] = bool(rag_recommendations)
-        strategic_meta['recommendations_analysis'] = f"Corrected RAG analysis - {len(rag_recommendations)} recommendations"
+        if is_predefined_process:
+            strategic_meta['recommendations_analysis'] = f"Role-based assignment for predefined process - {len(rag_recommendations)} recommendation(s) matching role: {recommended_role}"
+        else:
+            strategic_meta['recommendations_analysis'] = f"Full RAG analysis with JD documents - {len(rag_recommendations)} recommendation(s)"
         strategic_meta['recommendations_generated_at'] = datetime.utcnow().isoformat()
         strategic_meta['rag_enhanced'] = True
         strategic_meta['recommendation_count'] = len(rag_recommendations)
-        strategic_meta['assignment_strategy'] = "role_first_then_department"
+        strategic_meta['assignment_strategy'] = strategy
+        strategic_meta['total_employees_considered'] = len(employees)
         
         update_result = supabase.table("action_plans").update({
             "strategic_metadata": strategic_meta
@@ -3383,8 +3686,10 @@ def corrected_process_employee_recommendations_for_task(task, employees, ai_meta
                 "processing_time": processing_time,
                 "rag_enhanced": True,
                 "recommendation_count": len(rag_recommendations),
-                "assignment_strategy": "role_first_then_department",
-                "role_based_assignments": len([r for r in rag_recommendations if r.get('role_based_assignment')])
+                "assignment_strategy": strategy,
+                "role_based_assignments": len([r for r in rag_recommendations if r.get('role_based_assignment')]),
+                "is_predefined_process": is_predefined_process,
+                "recommended_role": recommended_role if is_predefined_process else None
             },
             "updated_at": datetime.utcnow().isoformat()
         }

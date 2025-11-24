@@ -114,9 +114,26 @@ class AuthManager:
             
             if user_info.get('role') == 'superadmin':
                 # Handle superadmin password change
+                # Verify current password matches
                 if current_password != self.superadmin_password:
                     return {'success': False, 'error': 'Current password is incorrect'}
-                return {'success': False, 'error': 'Changing superadmin password is not allowed in demo'}
+                
+                # Update superadmin password in environment (for this session)
+                # Note: This doesn't persist across server restarts unless you update .env file
+                # For production, consider storing in database or secure config management
+                self.superadmin_password = new_password
+                
+                # Also update the admin employee record password if it exists
+                admin_result = supabase.table("employees").select("id").eq("email", self.superadmin_email).execute()
+                if admin_result.data:
+                    admin_id = admin_result.data[0]['id']
+                    hashed_new = self.hash_password(new_password)
+                    supabase.table("employees").update({
+                        'password': hashed_new,
+                        'updated_at': datetime.utcnow().isoformat()
+                    }).eq('id', admin_id).execute()
+                
+                return {'success': True, 'message': 'Superadmin password updated successfully. Note: Update .env file to persist across server restarts.'}
                 
             else:
                 # Handle employee password change

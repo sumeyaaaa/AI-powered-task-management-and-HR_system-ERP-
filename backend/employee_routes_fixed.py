@@ -32,7 +32,25 @@ def get_employees():
     """Get all employees with proper table structure"""
     try:
         supabase = get_supabase_client()
-        result = supabase.table("employees").select("*").order("created_at", desc=True).execute()
+
+        # Only fetch JSON-serializable columns to avoid PostgREST 556 errors when binary fields exist
+        base_columns = [
+            "id", "name", "email", "role", "department", "title", "bio",
+            "linkedin_url", "telegram_chat_id", "area_of_development",
+            "skills", "strengths", "experience_years", "location",
+            "photo_url", "job_description_url", "is_active",
+            "created_at", "updated_at"
+        ]
+        select_clause = ",".join(base_columns)
+
+        include_inactive = request.args.get('include_inactive', 'false').lower() == 'true'
+
+        query = supabase.table("employees").select(select_clause).order("created_at", desc=True)
+
+        if not include_inactive:
+            query = query.eq("is_active", True)
+
+        result = query.execute()
         employees = result.data if result.data else []
         return jsonify({'success': True, 'employees': employees})
     except Exception as e:

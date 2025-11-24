@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, g
 from flask_cors import CORS
 from auth import AuthManager, token_required, admin_required
 import os
@@ -55,6 +55,25 @@ def create_app():
         
         return jsonify(result) if result['success'] else (jsonify(result), 401)
     
+    # Token validation endpoint
+    @app.route('/api/auth/validate-token', methods=['GET'])
+    @token_required
+    def validate_token():
+        """Validate if the current token is still valid"""
+        try:
+            # g.user is set by @token_required decorator
+            return jsonify({
+                'success': True,
+                'valid': True,
+                'user': {
+                    'email': g.user['email'],
+                    'role': g.user.get('role'),
+                    'employee_id': g.user.get('employee_id')
+                }
+            })
+        except Exception as e:
+            return jsonify({'success': False, 'valid': False, 'error': str(e)}), 401
+    
     # Change password endpoint
     @app.route('/api/auth/change-password', methods=['POST'])
     @token_required
@@ -63,14 +82,9 @@ def create_app():
         if not data or not data.get('current_password') or not data.get('new_password'):
             return jsonify({'success': False, 'error': 'Current and new password required'}), 400
         
-        token = request.headers.get('Authorization').replace('Bearer ', '')
+        # g.user is set by @token_required decorator - no need to verify token again
         auth_manager = AuthManager()
-        verification = auth_manager.verify_token(token)
-        
-        if not verification['success']:
-            return jsonify({'success': False, 'error': 'Invalid token'}), 401
-        
-        result = auth_manager.change_password(verification, data['current_password'], data['new_password'])
+        result = auth_manager.change_password(g.user, data['current_password'], data['new_password'])
         return jsonify(result)
     
     # Employee profile endpoint
@@ -79,18 +93,12 @@ def create_app():
     def get_employee_profile():
         """Get employee profile (for employees) or all employees (for admin)"""
         try:
-            token = request.headers.get('Authorization').replace('Bearer ', '')
-            auth_manager = AuthManager()
-            verification = auth_manager.verify_token(token)
-            
-            if not verification['success']:
-                return jsonify({'success': False, 'error': 'Invalid token'}), 401
-            
+            # g.user is set by @token_required decorator - no need to verify token again
             from supabase import create_client
             supabase = create_client(os.getenv('SUPABASE_URL'), os.getenv('SUPABASE_SERVICE_KEY'))
             
-            if verification.get('role') == 'employee':
-                employee_id = verification.get('employee_id')
+            if g.user.get('role') == 'employee':
+                employee_id = g.user.get('employee_id')
                 if not employee_id:
                     return jsonify({'success': False, 'error': 'Employee ID not found'}), 400
                 
@@ -117,5 +125,5 @@ app = create_app()
 
 if __name__ == '__main__':
     print("🚀 Starting Unified ERP Backend Server")
-    app.run(host='0.0.0.0', port=10000, debug=False)
-    #app.run(host='127.0.0.1', port=5000, debug=True)
+    #app.run(host='0.0.0.0', port=10000, debug=False)
+    app.run(host='127.0.0.1', port=5000, debug=True)

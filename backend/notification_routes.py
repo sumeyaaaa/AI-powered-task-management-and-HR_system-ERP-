@@ -375,12 +375,31 @@ def get_notifications():
             }), 400
         
         # Admin sees all notifications, employees see only theirs
+        base_columns = [
+            "id", "to_employee", "channel", "message",
+            "meta", "priority", "is_read", "created_at"
+        ]
+        select_clause = ",".join(base_columns)
+
         if user_target == "admin":
             print("👑 Admin - fetching ALL notifications")
-            result = supabase.table("notifications").select("*").order("created_at", desc=True).execute()
+            result = (
+                supabase.table("notifications")
+                .select(select_clause)
+                .order("created_at", desc=True)
+                .limit(500)
+                .execute()
+            )
         else:
             print(f"👤 Employee - fetching notifications for: {user_target}")
-            result = supabase.table("notifications").select("*").eq("to_employee", user_target).order("created_at", desc=True).execute()
+            result = (
+                supabase.table("notifications")
+                .select(select_clause)
+                .eq("to_employee", user_target)
+                .order("created_at", desc=True)
+                .limit(200)
+                .execute()
+            )
         
         notifications = result.data if result.data else []
         unread_count = len([n for n in notifications if not n.get('is_read', False)])
