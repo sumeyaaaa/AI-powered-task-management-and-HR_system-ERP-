@@ -31,11 +31,10 @@ const Notifications: React.FC = () => {
     }
     
     if (notification.meta?.task_id) {
-      navigateToTask(notification.meta.task_id);
-      // Navigate to task management page
-      navigate('/admin/task-management');
-      // Store task ID for the task management page to highlight
-      localStorage.setItem('current_task_id', notification.meta.task_id);
+      const taskId = notification.meta.task_id;
+      navigateToTask(taskId);
+      localStorage.setItem('current_task_id', taskId);
+      navigate(`/admin/task-management/${taskId}`);
     }
     
     setSelectedNotification(notification);

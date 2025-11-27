@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { Task, Goal, Employee } from '../../types';
 import { taskService } from '../../services/task';
 import { employeeService } from '../../services/employee';
@@ -56,6 +56,24 @@ export const AITaskBuilder: React.FC<AITaskBuilderProps> = ({ onTasksGenerated }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [ragProgress, setRagProgress] = useState<{
+    tasks: Array<{
+      task_id: string;
+      task_description: string;
+      status: 'completed' | 'in_progress' | 'pending' | 'failed';
+      progress: number;
+      current_activity: string;
+      recommendations_count: number;
+    }>;
+    summary: {
+      total_tasks: number;
+      completed: number;
+      in_progress: number;
+      pending: number;
+      failed: number;
+    };
+  } | null>(null);
+  const ragPollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const employeeOptions = useMemo(
     () =>
@@ -117,6 +135,11 @@ export const AITaskBuilder: React.FC<AITaskBuilderProps> = ({ onTasksGenerated }
       } else {
         setAiTasks(generatedTasks);
         setSuccess(result.message || 'AI tasks generated. You can edit them below.');
+        
+        // Start polling for RAG recommendation progress if we have a goal
+        if (result.goal?.id) {
+          startRAGProgressPolling(result.goal.id);
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -239,6 +262,60 @@ export const AITaskBuilder: React.FC<AITaskBuilderProps> = ({ onTasksGenerated }
     }
   };
 
+  const startRAGProgressPolling = (objectiveId: string) => {
+    // Clear any existing polling
+    if (ragPollingIntervalRef.current) {
+      clearInterval(ragPollingIntervalRef.current);
+    }
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const status = await taskService.getRAGRecommendationsStatus(objectiveId);
+        if (status.success && status.tasks && status.summary) {
+          setRagProgress({
+            tasks: status.tasks,
+            summary: status.summary
+          });
+          
+          // Stop polling if all tasks are completed or failed
+          if (status.summary.completed + status.summary.failed === status.summary.total_tasks) {
+            clearInterval(pollInterval);
+            ragPollingIntervalRef.current = null;
+            // Refresh tasks to get updated recommendations
+            if (goal?.id) {
+              const updatedTasks = await fetchTasksForGoal(goal.id);
+              if (updatedTasks.length) {
+                setAiTasks(updatedTasks);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error polling RAG progress:', err);
+      }
+    }, 2000); // Poll every 2 seconds
+
+    ragPollingIntervalRef.current = pollInterval;
+
+    // Cleanup after 5 minutes
+    setTimeout(() => {
+      if (ragPollingIntervalRef.current === pollInterval) {
+        clearInterval(pollInterval);
+        ragPollingIntervalRef.current = null;
+      }
+    }, 5 * 60 * 1000);
+  };
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (ragPollingIntervalRef.current) {
+        clearInterval(ragPollingIntervalRef.current);
+        ragPollingIntervalRef.current = null;
+      }
+    };
+  }, []);
+
   return (
     <div className="ai-builder">
       <div className="ai-builder-header">
@@ -333,6 +410,77 @@ export const AITaskBuilder: React.FC<AITaskBuilderProps> = ({ onTasksGenerated }
 
       {error && <div className="inline-error">{error}</div>}
       {success && <div className="inline-success">{success}</div>}
+
+      {ragProgress && ragProgress.summary.total_tasks > 0 && (
+        <div className="rag-progress-indicator" style={{
+          padding: '16px',
+          margin: '16px 0',
+          backgroundColor: '#f8f9fa',
+          borderRadius: '8px',
+          border: '1px solid #e0e0e0'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>
+              🤖 RAG Employee Recommendations Progress
+            </h4>
+            <div style={{ fontSize: '14px', color: '#666' }}>
+              {ragProgress.summary.completed}/{ragProgress.summary.total_tasks} completed
+            </div>
+          </div>
+          
+          <div style={{ marginBottom: '12px' }}>
+            <div style={{ 
+              width: '100%', 
+              height: '8px', 
+              backgroundColor: '#e0e0e0', 
+              borderRadius: '4px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                width: `${(ragProgress.summary.completed / ragProgress.summary.total_tasks) * 100}%`,
+                height: '100%',
+                backgroundColor: ragProgress.summary.failed > 0 ? '#ff6b6b' : '#4caf50',
+                transition: 'width 0.3s ease'
+              }} />
+            </div>
+          </div>
+
+          <div style={{ fontSize: '12px', color: '#666', display: 'flex', gap: '16px' }}>
+            <span>✅ Completed: {ragProgress.summary.completed}</span>
+            <span>⏳ In Progress: {ragProgress.summary.in_progress}</span>
+            <span>⏸️ Pending: {ragProgress.summary.pending}</span>
+            {ragProgress.summary.failed > 0 && <span style={{ color: '#ff6b6b' }}>❌ Failed: {ragProgress.summary.failed}</span>}
+          </div>
+
+          {ragProgress.summary.in_progress > 0 && (
+            <div style={{ marginTop: '12px', fontSize: '12px', color: '#666' }}>
+              <strong>Currently processing:</strong>
+              <ul style={{ margin: '8px 0 0 20px', padding: 0 }}>
+                {ragProgress.tasks
+                  .filter(t => t.status === 'in_progress')
+                  .map(task => (
+                    <li key={task.task_id} style={{ marginBottom: '4px' }}>
+                      {task.task_description}... ({task.progress}% - {task.current_activity})
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+
+          {ragProgress.summary.completed === ragProgress.summary.total_tasks && (
+            <div style={{ 
+              marginTop: '12px', 
+              padding: '8px', 
+              backgroundColor: '#e8f5e9', 
+              borderRadius: '4px',
+              fontSize: '12px',
+              color: '#2e7d32'
+            }}>
+              ✅ All RAG recommendations completed! Employee recommendations are now available for each task.
+            </div>
+          )}
+        </div>
+      )}
 
       {!!aiTasks.length && (
         <div className="ai-tasks-editor">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Task, Employee } from '../../types';
 import { taskService } from '../../services/task';
 import { Button } from '../Common/UI/Button';
@@ -26,13 +26,59 @@ export const GeneratedTaskCard: React.FC<GeneratedTaskCardProps> = ({
   const [showEditForm, setShowEditForm] = useState(false);
   const [showApproveForm, setShowApproveForm] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
+  const [generatingRecommendations, setGeneratingRecommendations] = useState(false);
+  const [ragProgress, setRagProgress] = useState(0);
+  const [ragActivity, setRagActivity] = useState('');
+  const [ragMetaId, setRagMetaId] = useState<string | null>(null);
 
   const strategicMeta = task.strategic_metadata || {};
   const hasRecommendations = strategicMeta.employee_recommendations_available || false;
   const recommendationsFailed = strategicMeta.recommendations_failed || false;
   const objectiveTitle = task.objectives?.title || task.strategic_objective || 'No Objective';
   const assignedEmployee = employees.find(emp => emp.id === task.assigned_to);
-  const assignedEmployeeName = assignedEmployee?.name || task.assigned_to_name || 'Unassigned';
+  const sanitizeName = (value?: string | null) => {
+    if (!value) return '';
+    const cleaned = value.replace(/^[^A-Za-z]*[0-9]+[\s\-\|:_]+/, '').trim();
+    return cleaned || value;
+  };
+
+  const assignedEmployeeName = sanitizeName(assignedEmployee?.name || task.assigned_to_name) || 'Unassigned';
+
+  // Poll for RAG progress when generating
+  useEffect(() => {
+    if (ragMetaId && generatingRecommendations) {
+      const interval = setInterval(async () => {
+        try {
+          const result = await taskService.getRAGRecommendationProgress(ragMetaId);
+          if (result.success) {
+            if (result.progress !== undefined) {
+              setRagProgress(result.progress);
+            }
+            if (result.current_activity) {
+              setRagActivity(result.current_activity);
+            }
+            if (result.output_json?.activity_details) {
+              setRagActivity(`${result.current_activity || ''} - ${result.output_json.activity_details}`);
+            }
+
+            if (result.status === 'completed') {
+              setGeneratingRecommendations(false);
+              setRagMetaId(null);
+              setRagProgress(100);
+              // Refresh recommendations
+              onRecommendationApplied?.();
+            } else if (result.status === 'error' || result.status === 'failed') {
+              setGeneratingRecommendations(false);
+              setRagMetaId(null);
+            }
+          }
+        } catch (err) {
+          console.error('Error checking RAG progress:', err);
+        }
+      }, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [ragMetaId, generatingRecommendations, onRecommendationApplied]);
 
   const formatDate = (value?: string) => {
     if (!value) return 'Not set';
@@ -189,15 +235,59 @@ export const GeneratedTaskCard: React.FC<GeneratedTaskCardProps> = ({
                     <Button
                       variant="secondary"
                       onClick={async () => {
-                        await taskService.generateRAGRecommendations(task.id);
-                        // Refresh after a delay
-                        setTimeout(() => {
-                          onRecommendationApplied?.();
-                        }, 2000);
+                        try {
+                          setGeneratingRecommendations(true);
+                          setRagProgress(0);
+                          setRagActivity('Starting RAG analysis...');
+                          const result = await taskService.generateRAGRecommendations(task.id);
+                          if (result.success && result.ai_meta_id) {
+                            setRagMetaId(result.ai_meta_id);
+                          } else {
+                            setGeneratingRecommendations(false);
+                            setRagActivity('Failed to start RAG analysis');
+                          }
+                        } catch (err) {
+                          setGeneratingRecommendations(false);
+                          setRagActivity('Error starting RAG analysis');
+                          console.error(err);
+                        }
                       }}
+                      disabled={generatingRecommendations}
                     >
-                      🔄 Refresh Recommendations
+                      {generatingRecommendations ? '⏳ Refreshing...' : '🔄 Refresh Recommendations'}
                     </Button>
+                    {generatingRecommendations && (
+                      <div style={{
+                        marginTop: '12px',
+                        padding: '12px',
+                        backgroundColor: '#f8f9fa',
+                        borderRadius: '6px',
+                        border: '1px solid #e0e0e0'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '14px', fontWeight: 600 }}>🤖 RAG Analysis Progress</span>
+                          <span style={{ fontSize: '12px', color: '#666' }}>{ragProgress}%</span>
+                        </div>
+                        <div style={{
+                          width: '100%',
+                          height: '6px',
+                          backgroundColor: '#e0e0e0',
+                          borderRadius: '3px',
+                          overflow: 'hidden',
+                          marginBottom: '8px'
+                        }}>
+                          <div style={{
+                            width: `${ragProgress}%`,
+                            height: '100%',
+                            backgroundColor: '#4caf50',
+                            transition: 'width 0.3s ease'
+                          }} />
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#666' }}>
+                          {ragActivity || 'Processing...'}
+                        </div>
+                      </div>
+                    )}
                   </>
                 ) : recommendationsFailed ? (
                   <>
@@ -207,27 +297,119 @@ export const GeneratedTaskCard: React.FC<GeneratedTaskCardProps> = ({
                     <Button
                       variant="secondary"
                       onClick={async () => {
-                        await taskService.generateRAGRecommendations(task.id);
-                        setTimeout(() => {
-                          onRecommendationApplied?.();
-                        }, 2000);
+                        try {
+                          setGeneratingRecommendations(true);
+                          setRagProgress(0);
+                          setRagActivity('Starting RAG analysis...');
+                          const result = await taskService.generateRAGRecommendations(task.id);
+                          if (result.success && result.ai_meta_id) {
+                            setRagMetaId(result.ai_meta_id);
+                          } else {
+                            setGeneratingRecommendations(false);
+                            setRagActivity('Failed to start RAG analysis');
+                          }
+                        } catch (err) {
+                          setGeneratingRecommendations(false);
+                          setRagActivity('Error starting RAG analysis');
+                          console.error(err);
+                        }
                       }}
+                      disabled={generatingRecommendations}
                     >
-                      🔍 Retry Employee Recommendations
+                      {generatingRecommendations ? '⏳ Retrying...' : '🔍 Retry Employee Recommendations'}
                     </Button>
+                    {generatingRecommendations && (
+                      <div style={{
+                        marginTop: '12px',
+                        padding: '12px',
+                        backgroundColor: '#f8f9fa',
+                        borderRadius: '6px',
+                        border: '1px solid #e0e0e0'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '14px', fontWeight: 600 }}>🤖 RAG Analysis Progress</span>
+                          <span style={{ fontSize: '12px', color: '#666' }}>{ragProgress}%</span>
+                        </div>
+                        <div style={{
+                          width: '100%',
+                          height: '6px',
+                          backgroundColor: '#e0e0e0',
+                          borderRadius: '3px',
+                          overflow: 'hidden',
+                          marginBottom: '8px'
+                        }}>
+                          <div style={{
+                            width: `${ragProgress}%`,
+                            height: '100%',
+                            backgroundColor: '#4caf50',
+                            transition: 'width 0.3s ease'
+                          }} />
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#666' }}>
+                          {ragActivity || 'Processing...'}
+                        </div>
+                      </div>
+                    )}
                   </>
                 ) : (
+                  <>
                   <Button
                     variant="primary"
                     onClick={async () => {
-                      await taskService.generateRAGRecommendations(task.id);
-                      setTimeout(() => {
-                        onRecommendationApplied?.();
-                      }, 2000);
-                    }}
-                  >
-                    🔍 Get Employee Recommendations
+                        try {
+                          setGeneratingRecommendations(true);
+                          setRagProgress(0);
+                          setRagActivity('Starting RAG analysis...');
+                          const result = await taskService.generateRAGRecommendations(task.id);
+                          if (result.success && result.ai_meta_id) {
+                            setRagMetaId(result.ai_meta_id);
+                          } else {
+                            setGeneratingRecommendations(false);
+                            setRagActivity('Failed to start RAG analysis');
+                          }
+                        } catch (err) {
+                          setGeneratingRecommendations(false);
+                          setRagActivity('Error starting RAG analysis');
+                          console.error(err);
+                        }
+                      }}
+                      disabled={generatingRecommendations}
+                    >
+                      {generatingRecommendations ? '⏳ Generating...' : '🔍 Get Employee Recommendations'}
                   </Button>
+                    {generatingRecommendations && (
+                      <div style={{
+                        marginTop: '12px',
+                        padding: '12px',
+                        backgroundColor: '#f8f9fa',
+                        borderRadius: '6px',
+                        border: '1px solid #e0e0e0'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '14px', fontWeight: 600 }}>🤖 RAG Analysis Progress</span>
+                          <span style={{ fontSize: '12px', color: '#666' }}>{ragProgress}%</span>
+                        </div>
+                        <div style={{
+                          width: '100%',
+                          height: '6px',
+                          backgroundColor: '#e0e0e0',
+                          borderRadius: '3px',
+                          overflow: 'hidden',
+                          marginBottom: '8px'
+                        }}>
+                          <div style={{
+                            width: `${ragProgress}%`,
+                            height: '100%',
+                            backgroundColor: '#4caf50',
+                            transition: 'width 0.3s ease'
+                          }} />
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#666' }}>
+                          {ragActivity || 'Processing...'}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}

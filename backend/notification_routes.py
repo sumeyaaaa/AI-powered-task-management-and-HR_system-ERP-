@@ -64,7 +64,7 @@ def notifications_token_required(f):
     return decorated
 
 def get_user_notification_target():
-    """Get notification target for current user"""
+    """Determine how notifications should be scoped for the current user"""
     try:
         if not hasattr(g, 'user') or not g.user:
             return None
@@ -72,13 +72,21 @@ def get_user_notification_target():
         user_role = g.user.get('role')
         employee_id = g.user.get('employee_id')
         
-        # Admin users see all notifications
-        if user_role in ['admin', 'superadmin']:
-            return "admin"
-        
-        # Employee users need employee_id
+        # Prefer targeted feed if we have an employee_id
         if employee_id:
-            return str(employee_id)
+            return {
+                'scope': 'employee',
+                'value': str(employee_id),
+                'role': user_role
+            }
+        
+        # Fallback: admin without employee record sees full feed
+        if user_role in ['admin', 'superadmin']:
+            return {
+                'scope': 'admin_all',
+                'value': None,
+                'role': user_role
+            }
         
         return None
         
@@ -354,6 +362,69 @@ def create_single_notification(supabase, task_id, notification_type, message, re
                     print(f"❌ Failed to create notification for {recipient}")
             except Exception as e:
                 print(f"❌ Error creating notification for {recipient}: {e}")
+
+
+def create_admin_event_notification(notification_type, message, meta=None, exclude_employee_id=None):
+    """Send notifications to admin users for global events"""
+    try:
+        supabase = get_supabase_client()
+        admin_employees = get_admin_employees()
+        recipients = set()
+        
+        for admin in admin_employees:
+            admin_id = admin.get('id')
+            if not admin_id:
+                continue
+            if exclude_employee_id and str(admin_id) == str(exclude_employee_id):
+                continue
+            recipients.add(str(admin_id))
+        
+        if not recipients:
+            print("⚠️ No admin recipients for admin event notification")
+            return
+        
+        for recipient in recipients:
+            duplicate_check = (
+                supabase
+                .table("notifications")
+                .select("id")
+                .eq("meta->>type", notification_type)
+                .eq("to_employee", recipient)
+                .gte("created_at", (datetime.utcnow() - timedelta(minutes=2)).isoformat())
+                .execute()
+            )
+            if duplicate_check.data:
+                print(f"⏭️  Skipping duplicate admin event notification ({notification_type}) for {recipient}")
+                continue
+            
+            notification_meta = {
+                "type": notification_type,
+                "category": "admin_event",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            if meta:
+                notification_meta.update(meta)
+            
+            notification_data = {
+                "to_employee": recipient,
+                "channel": "in_app",
+                "message": message,
+                "meta": notification_meta,
+                "priority": "normal",
+                "created_at": datetime.utcnow().isoformat(),
+                "is_read": False
+            }
+            
+            try:
+                result = supabase.table("notifications").insert(notification_data).execute()
+                if result.data:
+                    print(f"✅ Admin event notification created for {recipient}: {message}")
+                else:
+                    print(f"❌ Failed to create admin event notification for {recipient}")
+            except Exception as e:
+                print(f"❌ Error creating admin event notification for {recipient}: {e}")
+    except Exception as e:
+        print(f"❌ create_admin_event_notification ERROR: {e}")
 # ===== MAIN NOTIFICATIONS ENDPOINT - FIXED =====
 @notification_bp.route('/api/notifications', methods=['GET'])
 @notifications_token_required  # ← THIS IS THE KEY FIX
@@ -374,15 +445,19 @@ def get_notifications():
                 'error': 'Could not identify user for notifications'
             }), 400
         
-        # Admin sees all notifications, employees see only theirs
+        target_scope = user_target.get('scope')
+        target_value = user_target.get('value')
+        user_role = user_target.get('role')
+        
+        # Admin sees all notifications only when no employee ID is available
         base_columns = [
             "id", "to_employee", "channel", "message",
             "meta", "priority", "is_read", "created_at"
         ]
         select_clause = ",".join(base_columns)
 
-        if user_target == "admin":
-            print("👑 Admin - fetching ALL notifications")
+        if target_scope == "admin_all":
+            print("👑 Admin (no employee record) - fetching ALL notifications")
             result = (
                 supabase.table("notifications")
                 .select(select_clause)
@@ -390,16 +465,20 @@ def get_notifications():
                 .limit(500)
                 .execute()
             )
-        else:
-            print(f"👤 Employee - fetching notifications for: {user_target}")
+            feed_scope = 'admin_all'
+        elif target_scope == "employee" and target_value:
+            print(f"🎯 Scoped notifications for employee: {target_value}")
             result = (
                 supabase.table("notifications")
                 .select(select_clause)
-                .eq("to_employee", user_target)
+                .eq("to_employee", target_value)
                 .order("created_at", desc=True)
                 .limit(200)
                 .execute()
             )
+            feed_scope = 'admin' if user_role in ['admin', 'superadmin'] else 'employee'
+        else:
+            return jsonify({'success': False, 'error': 'Invalid notification target'}), 400
         
         notifications = result.data if result.data else []
         unread_count = len([n for n in notifications if not n.get('is_read', False)])
@@ -411,7 +490,8 @@ def get_notifications():
             'notifications': notifications,
             'unread_count': unread_count,
             'total': len(notifications),
-            'user_type': 'admin' if user_target == 'admin' else 'employee'
+            'user_type': 'admin' if user_role in ['admin', 'superadmin'] else 'employee',
+            'feed_scope': feed_scope
         })
         
     except Exception as e:
@@ -430,10 +510,15 @@ def mark_notification_read(notification_id):
         if not user_target:
             return jsonify({'success': False, 'error': 'Could not identify user'}), 400
         
-        if user_target == "admin":
+        target_scope = user_target.get('scope')
+        target_value = user_target.get('value')
+        
+        if target_scope == "admin_all":
             notification_result = supabase.table("notifications").select("*").eq("id", notification_id).execute()
+        elif target_scope == "employee" and target_value:
+            notification_result = supabase.table("notifications").select("*").eq("id", notification_id).eq("to_employee", target_value).execute()
         else:
-            notification_result = supabase.table("notifications").select("*").eq("id", notification_id).eq("to_employee", user_target).execute()
+            return jsonify({'success': False, 'error': 'Invalid notification target'}), 400
         
         if not notification_result.data:
             return jsonify({'success': False, 'error': 'Notification not found or not authorized'}), 404
@@ -469,17 +554,22 @@ def mark_all_notifications_read():
         
         if not user_target:
             return jsonify({'success': False, 'error': 'Could not identify user'}), 400
-        
+
         update_data = {
             "is_read": True,
             "read_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat()
         }
         
-        if user_target == "admin":
+        target_scope = user_target.get('scope')
+        target_value = user_target.get('value')
+        
+        if target_scope == "admin_all":
             result = supabase.table("notifications").update(update_data).eq("is_read", False).execute()
+        elif target_scope == "employee" and target_value:
+            result = supabase.table("notifications").update(update_data).eq("to_employee", target_value).eq("is_read", False).execute()
         else:
-            result = supabase.table("notifications").update(update_data).eq("to_employee", user_target).eq("is_read", False).execute()
+            return jsonify({'success': False, 'error': 'Invalid notification target'}), 400
         
         return jsonify({
             'success': True,
@@ -501,10 +591,15 @@ def get_notification_count():
         if not user_target:
             return jsonify({'success': False, 'error': 'Could not identify user'}), 400
         
-        if user_target == "admin":
+        target_scope = user_target.get('scope')
+        target_value = user_target.get('value')
+        
+        if target_scope == "admin_all":
             result = supabase.table("notifications").select("id", count="exact").eq("is_read", False).execute()
+        elif target_scope == "employee" and target_value:
+            result = supabase.table("notifications").select("id", count="exact").eq("to_employee", target_value).eq("is_read", False).execute()
         else:
-            result = supabase.table("notifications").select("id", count="exact").eq("to_employee", user_target).eq("is_read", False).execute()
+            return jsonify({'success': False, 'error': 'Invalid notification target'}), 400
         
         unread_count = result.count if hasattr(result, 'count') else 0
         
@@ -528,10 +623,15 @@ def delete_notification(notification_id):
         if not user_target:
             return jsonify({'success': False, 'error': 'Could not identify user'}), 400
         
-        if user_target == "admin":
+        target_scope = user_target.get('scope')
+        target_value = user_target.get('value')
+        
+        if target_scope == "admin_all":
             notification_result = supabase.table("notifications").select("*").eq("id", notification_id).execute()
+        elif target_scope == "employee" and target_value:
+            notification_result = supabase.table("notifications").select("*").eq("id", notification_id).eq("to_employee", target_value).execute()
         else:
-            notification_result = supabase.table("notifications").select("*").eq("id", notification_id).eq("to_employee", user_target).execute()
+            return jsonify({'success': False, 'error': 'Invalid notification target'}), 400
         
         if not notification_result.data:
             return jsonify({'success': False, 'error': 'Notification not found or not authorized'}), 404
@@ -660,7 +760,6 @@ def get_notification_flow_debug():
     return {
         'current_user_role': current_user_role,
         'current_user_employee_id': current_user_employee_id,
-        'admin_employee_id': get_admin_employee_id(),
         'timestamp': datetime.utcnow().isoformat()
     }
 

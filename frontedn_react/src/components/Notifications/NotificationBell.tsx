@@ -39,14 +39,18 @@ const NotificationBell: React.FC = () => {
     }
     
     if (notification.meta?.task_id) {
-      navigateToTask(notification.meta.task_id);
-      // Store task ID BEFORE navigation so the task management page can select it
-      localStorage.setItem('current_task_id', notification.meta.task_id);
-      // Navigate based on user role - check if admin or employee
-      const userRole = localStorage.getItem('userData') ? JSON.parse(localStorage.getItem('userData') || '{}').role : 'employee';
+      const taskId = notification.meta.task_id;
+      navigateToTask(taskId);
+      localStorage.setItem('current_task_id', taskId);
+
+      const userRole = localStorage.getItem('userData')
+        ? JSON.parse(localStorage.getItem('userData') || '{}').role
+        : 'employee';
+
       if (userRole === 'superadmin' || userRole === 'admin') {
-        navigate('/admin/task-management');
+        navigate(`/admin/task-management/${taskId}`);
       } else {
+        // Employee view still uses list view
         navigate('/employee/task-management');
       }
     }

@@ -8,7 +8,7 @@ To add a new predefined process:
 """
 
 def get_predefined_processes_registry():
-    """
+    """]
     Returns registry of all predefined processes.
     Each process is a dictionary with step keys and step data.
     

@@ -121,7 +121,7 @@ REACT_APP_BACKEND_URL=https://your-backend.onrender.com
    - **Name**: `leanchem-frontend`
    - **Root Directory**: `frontedn_react`
    - **Build Command**: `npm install && npm run build`
-   - **Publish Directory**: `dist`
+   - **Publish Directory**: `build` (for Create React App)
 5. Add environment variable:
    - **Key**: `REACT_APP_BACKEND_URL`
    - **Value**: `https://your-backend.onrender.com`

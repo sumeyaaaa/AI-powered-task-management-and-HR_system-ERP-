@@ -88,7 +88,13 @@ export const TaskList: React.FC<TaskListProps> = ({
                   {task.priority.toUpperCase()}
                 </span>
               </td>
-              <td>{task.assigned_to_name || task.assigned_to}</td>
+              <td>
+                {(() => {
+                  const rawName = task.assigned_to_name || task.assigned_to || '';
+                  const cleaned = rawName.replace(/^[^A-Za-z]*[0-9]+[\s\-\|:_]+/, '').trim();
+                  return cleaned || rawName || 'Unassigned';
+                })()}
+              </td>
               <td>{task.due_date ? new Date(task.due_date).toLocaleDateString() : 'N/A'}</td>
               <td className="task-actions">
                 <Button variant="secondary" size="small" onClick={() => onEditTask(task)}>

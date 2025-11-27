@@ -19,10 +19,20 @@ export const TaskDetailDrawer: React.FC<TaskDetailDrawerProps> = ({
   const strategicObjective = task.strategic_objective || task.objectives?.title || 'Not set';
   const preNumber = task.pre_number || task.objectives?.pre_number || 'Not assigned';
   const metadata = task.strategic_metadata;
+  const sanitizeName = (value?: string | null) => {
+    if (!value) return '';
+    const cleaned = value.replace(/^[^A-Za-z]*[0-9]+[\s\-\|:_]+/, '').trim();
+    return cleaned || value;
+  };
+
   const assignedTo =
-    task.employees?.name ||
+    sanitizeName(task.employees?.name) ||
     task.employees?.email ||
-    (typeof task.assigned_to === 'string' ? task.assigned_to : 'Unassigned');
+    (typeof task.assigned_to_name === 'string'
+      ? sanitizeName(task.assigned_to_name)
+      : typeof task.assigned_to === 'string'
+        ? sanitizeName(task.assigned_to)
+        : 'Unassigned');
 
   const handleStatusClick = (status: Task['status']) => {
     if (task.status === status) return;

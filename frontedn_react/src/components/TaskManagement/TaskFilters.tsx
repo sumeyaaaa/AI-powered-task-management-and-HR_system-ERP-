@@ -1,5 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { Task } from '../../types';
+import { Employee } from '../../types/employee';
+import { employeeService } from '../../services/employee';
 import { TaskManagementFilters } from './types';
 
 interface TaskFiltersProps {
@@ -32,19 +34,43 @@ export const TaskFilters: React.FC<TaskFiltersProps> = ({
   onFiltersChange,
   tasks
 }) => {
-  const assigneeOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    tasks.forEach(task => {
-      if (task.assigned_to) {
-        map.set(task.assigned_to, task.assigned_to_name || task.assigned_to);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+
+  useEffect(() => {
+    const loadEmployees = async () => {
+      try {
+        const data = await employeeService.getAllEmployees(true);
+        setEmployees(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error('Failed to load employees:', err);
+        setEmployees([]);
       }
-    });
+    };
+    loadEmployees();
+  }, []);
+
+  const getDisplayName = (name?: string | null) => {
+    if (!name) return '';
+    // Strip leading IDs like "12345 - John Doe" or "#123 | Jane"
+    const cleaned = name.replace(/^[^A-Za-z]*[0-9]+[\s\-\|:_]+/, '').trim();
+    return cleaned || name;
+  };
+
+  const assigneeOptions = useMemo(() => {
+    // Use all employees instead of just those from tasks
+    const employeeList = employees
+      .filter(emp => emp.is_active !== false) // Only active employees
+      .map(emp => ({
+        id: emp.id,
+        name: getDisplayName(emp.name) || emp.name || 'Unknown'
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)); // Sort alphabetically
 
     return [
       { id: 'all', name: 'All Assignees' },
-      ...Array.from(map.entries()).map(([id, name]) => ({ id, name }))
+      ...employeeList
     ];
-  }, [tasks]);
+  }, [employees]);
 
   return (
     <div className="task-filters">

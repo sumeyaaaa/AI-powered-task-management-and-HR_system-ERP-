@@ -674,38 +674,16 @@ def apply_employee_recommendation(task_id):
         if not employee_id:
             return jsonify({'success': False, 'error': 'Employee ID is required'}), 400
         
-        # First get the current task to preserve strategic_metadata and check existing assignments
-        current_task_result = supabase.table("action_plans").select("strategic_metadata, assigned_to, assigned_to_multiple").eq("id", task_id).execute()
+        # First get the current task to preserve strategic_metadata
+        current_task_result = supabase.table("action_plans").select("strategic_metadata").eq("id", task_id).execute()
         current_strategic_meta = {}
-        current_assigned_to = None
-        current_assigned_multiple = []
-        
         if current_task_result.data:
-            current_task = current_task_result.data[0]
-            current_strategic_meta = current_task.get('strategic_metadata', {})
-            current_assigned_to = current_task.get('assigned_to')
-            current_assigned_multiple = current_task.get('assigned_to_multiple') or []
-        
-        # Check if employee is already assigned
-        employee_uuid = safe_uuid(employee_id)
-        if employee_uuid in current_assigned_multiple or employee_uuid == current_assigned_to:
-            return jsonify({'success': False, 'error': 'This employee is already assigned to this task'}), 400
-        
-        # Add to multiple assignments (keep existing ones)
-        new_assigned_multiple = list(current_assigned_multiple)
-        if employee_uuid not in new_assigned_multiple:
-            new_assigned_multiple.append(employee_uuid)
-        
-        # If no primary assignee, set this as primary
-        if not current_assigned_to:
-            primary_assignee = employee_uuid
-        else:
-            primary_assignee = current_assigned_to
+            current_strategic_meta = current_task_result.data[0].get('strategic_metadata', {})
         
         # Update task with assigned employee while preserving strategic metadata
         update_data = {
-            "assigned_to": primary_assignee,
-            "assigned_to_multiple": new_assigned_multiple,
+            "assigned_to": employee_id,
+            "assigned_to_multiple": [employee_id],
             "status": "not_started",
             "updated_at": datetime.utcnow().isoformat(),
             "strategic_metadata": {
@@ -1381,63 +1359,11 @@ def generate_custom_fallback_tasks(goal, goal_data, ai_meta_id):
                     "goal_type": "custom",
                     "process_applied": "Custom fallback",
                     "framework_version": "custom",
-                    "fallback_used": True,
-                    "rag_recommendations_status": "generating"
+                    "fallback_used": True
                 }
             }).eq("id", ai_meta_id).execute()
         
-        # 🎯 AUTOMATICALLY GENERATE RAG RECOMMENDATIONS FOR FALLBACK TASKS
-        if created_tasks:
-            print(f"🤖 Starting automatic RAG recommendations for {len(created_tasks)} fallback tasks...")
-            
-            try:
-                employees_result = supabase.table("employees").select(
-                    "id, name, role, title, department, job_description_url, skills, experience_years"
-                ).eq("is_active", True).execute()
-                
-                employees = employees_result.data if employees_result.data else []
-                
-                if employees:
-                    for task in created_tasks:
-                        rag_ai_meta_data = {
-                            "source": "auto-rag-recommendations-fallback-tasks",
-                            "model": "rag-with-jd",
-                            "input_json": {
-                                "task_id": task['id'],
-                                "task_description": task['task_description'],
-                                "objective_id": goal['id'],
-                                "objective_title": goal_data.get('title', ''),
-                                "employees_count": len(employees),
-                                "employees_with_jd": len([emp for emp in employees if emp.get('job_description_url')]),
-                                "status": "starting",
-                                "auto_generated": True,
-                                "task_type": "custom_fallback_task"
-                            },
-                            "output_json": {
-                                "status": "processing",
-                                "progress": 0,
-                                "current_activity": "Starting automatic RAG employee recommendations",
-                                "task_id": task['id'],
-                                "auto_generated": True
-                            },
-                            "created_at": datetime.utcnow().isoformat()
-                        }
-                        
-                        rag_ai_meta_result = supabase.table("ai_meta").insert(rag_ai_meta_data).execute()
-                        rag_ai_meta_id = rag_ai_meta_result.data[0]['id'] if rag_ai_meta_result.data else None
-                        
-                        threading.Thread(
-                            target=corrected_process_employee_recommendations_for_task,
-                            args=(task, employees, rag_ai_meta_id),
-                            daemon=True
-                        ).start()
-                    
-                    print(f"✅ Started RAG recommendation generation for {len(created_tasks)} fallback tasks")
-                    
-            except Exception as rag_error:
-                print(f"⚠️ Error starting automatic RAG recommendations for fallback: {rag_error}")
-        
-        return created_tasks, f"Generated {len(created_tasks)} custom fallback tasks with RAG recommendations", time.time() - start_time
+        return created_tasks, f"Generated {len(created_tasks)} custom fallback tasks", time.time() - start_time
         
     except Exception as e:
         print(f"❌ Error in custom fallback generation: {e}")
@@ -1505,104 +1431,28 @@ def process_and_save_custom_tasks(goal, ai_tasks_data, ai_analysis, ai_meta_id, 
                     "process_applied": "Custom AI Generation",
                     "framework_version": "custom",
                     "ai_analysis_used": True,
-                    "strategic_analysis": strategic_analysis,
-                    "rag_recommendations_status": "generating"
+                    "strategic_analysis": strategic_analysis
                 }
             }).eq("id", ai_meta_id).execute()
         
-        # 🎯 AUTOMATICALLY GENERATE RAG RECOMMENDATIONS FOR EACH TASK
-        if created_tasks:
-            print(f"🤖 Starting automatic RAG recommendations for {len(created_tasks)} custom AI tasks...")
-            
-            # Get all active employees with JD links for RAG recommendations
-            try:
-                employees_result = supabase.table("employees").select(
-                    "id, name, role, title, department, job_description_url, skills, experience_years"
-                ).eq("is_active", True).execute()
-                
-                employees = employees_result.data if employees_result.data else []
-                
-                if employees:
-                    # Generate RAG recommendations for each task in background
-                    for task in created_tasks:
-                        # Create a separate AI meta record for each task's RAG recommendations
-                        rag_ai_meta_data = {
-                            "source": "auto-rag-recommendations-custom-tasks",
-                            "model": "rag-with-jd",
-                            "input_json": {
-                                "task_id": task['id'],
-                                "task_description": task['task_description'],
-                                "objective_id": goal['id'],
-                                "objective_title": goal['title'],
-                                "employees_count": len(employees),
-                                "employees_with_jd": len([emp for emp in employees if emp.get('job_description_url')]),
-                                "status": "starting",
-                                "auto_generated": True,
-                                "task_type": "custom_ai_task"
-                            },
-                            "output_json": {
-                                "status": "processing",
-                                "progress": 0,
-                                "current_activity": "Starting automatic RAG employee recommendations",
-                                "task_id": task['id'],
-                                "auto_generated": True
-                            },
-                            "created_at": datetime.utcnow().isoformat()
-                        }
-                        
-                        rag_ai_meta_result = supabase.table("ai_meta").insert(rag_ai_meta_data).execute()
-                        rag_ai_meta_id = rag_ai_meta_result.data[0]['id'] if rag_ai_meta_result.data else None
-                        
-                        # Start RAG recommendation process in background thread
-                        threading.Thread(
-                            target=corrected_process_employee_recommendations_for_task,
-                            args=(task, employees, rag_ai_meta_id),
-                            daemon=True
-                        ).start()
-                    
-                    print(f"✅ Started RAG recommendation generation for {len(created_tasks)} tasks")
-                else:
-                    print(f"⚠️ No active employees found for RAG recommendations")
-                    
-            except Exception as rag_error:
-                print(f"⚠️ Error starting automatic RAG recommendations: {rag_error}")
-                import traceback
-                traceback.print_exc()
-        
-        return created_tasks, f"Created {len(created_tasks)} custom AI tasks with RAG recommendations", task_time
+        return created_tasks, f"Created {len(created_tasks)} custom AI tasks", task_time
         
     except Exception as e:
         print(f"❌ Error processing custom tasks: {e}")
-        import traceback
-        traceback.print_exc()
-        # Need goal_data for fallback - extract from goal if needed
-        goal_data = {
-            'title': goal.get('title', 'Unknown Goal'),
-            'description': goal.get('description', ''),
-            'output': goal.get('output', ''),
-            'deadline': goal.get('deadline', 'Q4 2025')
-        }
-        return generate_custom_fallback_tasks(goal, goal_data, ai_meta_id)
+        return generate_custom_fallback_tasks(goal,ai_meta_id)
     
 def generate_ai_custom_tasks(goal, goal_data, ai_meta_id):
     """Generate custom AI tasks for non-delivery goals"""
-    start_time = time.time()
+    start_time = time.time()  # 🎯 ADD MISSING START_TIME
     
     try:
-        print(f"🤖 Generating custom AI tasks for: {goal_data['title'][:50]}...")
-        
-        if ai_meta_id:
-            update_ai_progress(ai_meta_id, 20, "Custom AI Task Generation", "Preparing AI classification")
-        
-        # Enhanced prompt with explicit JSON format
         prompt = f"""
-You are generating tasks for a NON-DELIVERY goal. Create 5-8 appropriate, customized tasks.
+You are generating tasks for a NON-DELIVERY goal. Create appropriate, customized tasks.
 
-GOAL INFORMATION:
-- Title: {goal_data['title']}
-- Description: {goal_data.get('description', 'N/A')}
-- Output/Goal: {goal_data.get('output', 'N/A')}
-- Deadline: {goal_data.get('deadline', 'Q4 2025')}
+GOAL: {goal_data['title']}
+DESCRIPTION: {goal_data.get('description', '')}
+OUTPUT: {goal_data.get('output', '')}
+DEADLINE: {goal_data.get('deadline', 'Q4 2025')}
 
 DEPARTMENT STRUCTURE:
 - SUPPLY CHAIN: Logistics, inventory, customs, transport
@@ -1610,7 +1460,7 @@ DEPARTMENT STRUCTURE:
 - PRODUCT: Quality, specifications, testing
 - FINANCE & ADMIN: Payments, compliance, administration
 
-TASK FOCUS AREAS:
+Generate 5-8 appropriate tasks for this goal. Focus on:
 - Strategic planning and analysis
 - Research and development  
 - Partnership building
@@ -1618,99 +1468,43 @@ TASK FOCUS AREAS:
 - Process improvement
 - Training and development
 
-REQUIRED JSON FORMAT:
-{{
-  "tasks": [
-    {{
-      "task_description": "Clear, specific task description",
-      "priority": "high|medium|low",
-      "estimated_hours": 8,
-      "due_date": "YYYY-MM-DD",
-      "assigned_role": "Account Executive|Product Development Manager|Supply Chain Specialist|Commercial and Finance Specialist",
-      "required_skills": ["Skill 1", "Skill 2"],
-      "success_criteria": "What success looks like",
-      "context": "Task context and background"
-    }}
-  ],
-  "strategic_analysis": {{
-    "context": "Overall strategic context",
-    "objective": "{goal_data['title']}",
-    "process": "Custom AI Task Generation",
-    "delivery": "{goal_data.get('deadline', 'Q4 2025')}",
-    "reporting_requirements": "Progress updates and completion reports",
-    "goal_type": "custom"
-  }}
-}}
-
-Generate 5-8 tasks. Return ONLY valid JSON in the exact format above. Do not include markdown code blocks.
+Return ONLY valid JSON with tasks that are appropriate for this specific goal.
 """
         
+        print(f"🤖 Generating custom AI tasks: {goal_data['title'][:50]}...")
+        
         if ai_meta_id:
-            update_ai_progress(ai_meta_id, 40, "Custom AI Task Generation", "Calling OpenAI API")
+            update_ai_progress(ai_meta_id, 40, "Custom AI Task Generation", "Creating goal-specific tasks")
         
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {
-                    "role": "system", 
-                    "content": "You are a task planning expert. Return ONLY valid JSON in the exact format specified. Do not include markdown, code blocks, or any text outside the JSON."
-                },
+                {"role": "system", "content": "Return ONLY valid JSON. Generate 5-8 customized tasks for this specific goal."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3,
+            temperature=0.3,  # Higher temperature for creative tasks
             max_tokens=3000,
-            timeout=60
+            timeout=30
         )
         
         task_time = time.time() - start_time
         response_text = response.choices[0].message.content.strip()
         
-        print(f"📥 AI Response received ({len(response_text)} chars): {response_text[:200]}...")
-        
-        if ai_meta_id:
-            update_ai_progress(ai_meta_id, 60, "Custom AI Task Generation", "Parsing AI response")
-        
-        # Parse JSON response
         ai_analysis = safe_json_parse(response_text, {})
-        
         if not ai_analysis:
-            print(f"❌ Failed to parse AI response. Raw response: {response_text[:500]}")
-            raise Exception("Invalid JSON response from AI - could not parse")
+            raise Exception("Invalid JSON response from AI")
         
         ai_tasks_data = ai_analysis.get('tasks', [])
         
-        if not ai_tasks_data:
-            print(f"⚠️ AI response has no 'tasks' array. Full response: {ai_analysis}")
-            raise Exception("AI response missing 'tasks' array")
-        
-        print(f"✅ Parsed {len(ai_tasks_data)} tasks from AI response")
-        
-        # Validate we have reasonable number of tasks
+        # For custom tasks, we don't force a specific number, but validate we have reasonable tasks
         if len(ai_tasks_data) < 3:
-            print(f"⚠️ AI returned only {len(ai_tasks_data)} tasks (minimum 3 required), using fallback")
+            print(f"⚠️ AI returned only {len(ai_tasks_data)} tasks, using fallback")
             return generate_custom_fallback_tasks(goal, goal_data, ai_meta_id)
         
-        if ai_meta_id:
-            update_ai_progress(ai_meta_id, 80, "Custom AI Task Generation", f"Processing {len(ai_tasks_data)} tasks")
-        
-        # Process and save tasks
-        result = process_and_save_custom_tasks(goal, ai_tasks_data, ai_analysis, ai_meta_id, task_time)
-        
-        if ai_meta_id:
-            update_ai_progress(ai_meta_id, 100, "Custom AI Task Generation", f"Successfully created {len(result[0])} tasks")
-        
-        return result
+        return process_and_save_custom_tasks(goal, ai_tasks_data, ai_analysis, ai_meta_id, task_time)
         
     except Exception as e:
-        error_msg = str(e)
-        print(f"❌ Error in custom AI task generation: {error_msg}")
-        import traceback
-        traceback.print_exc()
-        
-        if ai_meta_id:
-            log_ai_error("generate_ai_custom_tasks", error_msg, ai_meta_id, goal.get('id'), prompt if 'prompt' in locals() else None, response_text if 'response_text' in locals() else None)
-        
-        # Fallback to custom fallback tasks
+        print(f"❌ Error in custom AI task generation: {e}")
         return generate_custom_fallback_tasks(goal, goal_data, ai_meta_id)
 
 def generate_predefined_process_tasks(goal, goal_data, ai_meta_id, process_name):
@@ -2293,41 +2087,7 @@ def update_task(task_id):
             if 'assigned_to' in update_data:
                 update_data['assigned_to'] = safe_uuid(update_data['assigned_to'])
             if 'assigned_to_multiple' in update_data:
-                # Get current assignments to check for duplicates
-                current_assigned_to = current_task.get('assigned_to')
-                current_assigned_multiple = current_task.get('assigned_to_multiple') or []
-                
-                # Remove duplicates and None values
-                assigned_list = [safe_uuid(uid) for uid in update_data['assigned_to_multiple'] if safe_uuid(uid)]
-                
-                # Check for duplicates with existing assignments
-                all_current_assignees = set()
-                if current_assigned_to:
-                    all_current_assignees.add(current_assigned_to)
-                all_current_assignees.update(current_assigned_multiple)
-                
-                # Remove duplicates while preserving order and checking against existing assignments
-                seen = set()
-                unique_list = []
-                for uid in assigned_list:
-                    if uid and uid not in seen:
-                        # Check if this employee is already assigned (either as primary or in multiple)
-                        if uid in all_current_assignees:
-                            continue  # Skip if already assigned
-                        seen.add(uid)
-                        unique_list.append(uid)
-                
-                update_data['assigned_to_multiple'] = unique_list
-                
-                # If assigned_to is in the multiple list, ensure it's not duplicated
-                if update_data.get('assigned_to') and update_data['assigned_to'] in unique_list:
-                    # Keep assigned_to as primary, but don't duplicate in multiple
-                    pass
-                elif update_data.get('assigned_to') and update_data['assigned_to'] not in unique_list:
-                    # Add assigned_to to multiple if not already there and not already assigned
-                    if update_data['assigned_to'] not in all_current_assignees:
-                        unique_list.insert(0, update_data['assigned_to'])
-                        update_data['assigned_to_multiple'] = unique_list
+                update_data['assigned_to_multiple'] = [safe_uuid(uid) for uid in update_data['assigned_to_multiple'] if safe_uuid(uid)]
             
             # Handle dependencies - if task has dependencies, set status to 'waiting'
             if 'dependencies' in update_data and update_data['dependencies']:
@@ -3256,120 +3016,6 @@ def get_ai_meta_progress(ai_meta_id):
     except Exception as e:
         print(f"❌ Error getting AI meta: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
-@task_bp.route('/api/objectives/<objective_id>/rag-recommendations-status', methods=['GET'])
-@token_required
-def get_rag_recommendations_status(objective_id):
-    """Get RAG recommendation status for all tasks in an objective"""
-    try:
-        supabase = get_supabase_client()
-        
-        # Get all tasks for this objective
-        tasks_result = supabase.table("action_plans").select("id, task_description, strategic_metadata").eq("objective_id", objective_id).execute()
-        
-        if not tasks_result.data:
-            return jsonify({
-                'success': True,
-                'tasks': [],
-                'summary': {
-                    'total_tasks': 0,
-                    'completed': 0,
-                    'in_progress': 0,
-                    'pending': 0,
-                    'failed': 0
-                }
-            })
-        
-        tasks = tasks_result.data
-        task_ids = [task['id'] for task in tasks]
-        
-        # Get all AI meta records for RAG recommendations for these tasks
-        # Query for both custom tasks and fallback tasks sources
-        ai_meta_custom = supabase.table("ai_meta").select("*").eq("source", "auto-rag-recommendations-custom-tasks").execute()
-        ai_meta_fallback = supabase.table("ai_meta").select("*").eq("source", "auto-rag-recommendations-fallback-tasks").execute()
-        
-        all_ai_meta = (ai_meta_custom.data or []) + (ai_meta_fallback.data or [])
-        
-        # Create a map of task_id -> ai_meta
-        ai_meta_map = {}
-        for meta in all_ai_meta:
-            task_id = meta.get('input_json', {}).get('task_id')
-            if task_id and task_id in task_ids:
-                ai_meta_map[task_id] = meta
-        
-        # Build status for each task
-        task_statuses = []
-        summary = {
-            'total_tasks': len(tasks),
-            'completed': 0,
-            'in_progress': 0,
-            'pending': 0,
-            'failed': 0
-        }
-        
-        for task in tasks:
-            task_id = task['id']
-            meta = ai_meta_map.get(task_id)
-            strategic_meta = task.get('strategic_metadata', {}) or {}
-            has_recommendations = bool(strategic_meta.get('ai_recommendations'))
-            
-            if has_recommendations:
-                status = 'completed'
-                summary['completed'] += 1
-            elif meta:
-                output_json = meta.get('output_json', {})
-                meta_status = output_json.get('status', 'unknown')
-                progress = output_json.get('progress', 0)
-                
-                if meta_status == 'completed':
-                    status = 'completed'
-                    summary['completed'] += 1
-                elif meta_status == 'error':
-                    status = 'failed'
-                    summary['failed'] += 1
-                elif meta_status in ['processing', 'starting']:
-                    status = 'in_progress'
-                    summary['in_progress'] += 1
-                else:
-                    status = 'pending'
-                    summary['pending'] += 1
-                
-                task_statuses.append({
-                    'task_id': task_id,
-                    'task_description': task.get('task_description', '')[:50],
-                    'status': status,
-                    'progress': progress,
-                    'current_activity': output_json.get('current_activity', ''),
-                    'recommendations_count': len(strategic_meta.get('ai_recommendations', [])),
-                    'ai_meta_id': meta.get('id'),
-                    'has_recommendations': has_recommendations,
-                    'error': output_json.get('error') if meta_status == 'error' else None
-                })
-            else:
-                # No AI meta record yet - might be pending
-                status = 'pending'
-                summary['pending'] += 1
-                task_statuses.append({
-                    'task_id': task_id,
-                    'task_description': task.get('task_description', '')[:50],
-                    'status': status,
-                    'progress': 0,
-                    'current_activity': 'Waiting to start',
-                    'recommendations_count': 0,
-                    'has_recommendations': False
-                })
-        
-        return jsonify({
-            'success': True,
-            'tasks': task_statuses,
-            'summary': summary
-        })
-        
-    except Exception as e:
-        print(f"❌ Error getting RAG recommendations status: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
     
 # ========== RAG IMPLEMENTATION FOR EMPLOYEE RECOMMENDATIONS ==========
 
@@ -3807,25 +3453,19 @@ def find_employee_by_exact_role(employees, target_role):
     else:
         return []
     
-def enhanced_role_based_employee_recommendations(task_description, employees, top_k=3, ai_meta_id=None, task_title=None):
+def enhanced_role_based_employee_recommendations(task_description, employees, top_k=5):
     """
-    FULL RAG with JD Analysis - Uses AI to analyze Job Descriptions and Task requirements
-    For custom AI-generated tasks, this performs deep analysis of JD content and task titles
+    CORRECTED RAG - Uses role-based assignment first, department only as fallback
     """
     try:
-        print(f"🔍 FULL RAG ANALYSIS for: {task_description[:100]}...")
+        print(f"🔍 ENHANCED RAG for: {task_description[:100]}...")
         
-        if ai_meta_id:
-            task_context = f"{task_title or task_description[:50]}..." if task_title else task_description[:50]
-            update_ai_progress(ai_meta_id, 25, "Analyzing Task Requirements", f"Analyzing task: {task_context}")
-        
-        # STEP 1: Check if this is a predefined process task
+        # STEP 1: Direct role identification from process
         responsible_role = identify_responsible_role_from_process(task_description)
         
+        # STEP 2: If role found, find employees with EXACT role first
         if responsible_role:
             print(f"🎯 PROCESS ROLE FOUND: {responsible_role}")
-            if ai_meta_id:
-                update_ai_progress(ai_meta_id, 50, "Using Predefined Process Role", f"Role: {responsible_role}")
             matched_employees = find_employee_by_exact_role(employees, responsible_role)
             
             if matched_employees:
@@ -3846,259 +3486,24 @@ def enhanced_role_based_employee_recommendations(task_description, employees, to
                     'process_role_matched': responsible_role
                 }
                 print(f"✅ ASSIGNED: {employee['name']} as {responsible_role} ({assignment_type})")
-                if ai_meta_id:
-                    update_ai_progress(ai_meta_id, 100, "Recommendation Complete", f"Assigned: {employee['name']}")
                 return [recommendation]
+            else:
+                print(f"⚠️ No employees found for role: {responsible_role}")
+                # Continue to non-process analysis
+                responsible_role = None
         
-        # STEP 2: For custom AI tasks, use FULL RAG with JD analysis
-        task_context = f"{task_title or task_description[:50]}..." if task_title else task_description[:50]
-        print(f"🔍 Custom AI Task - Starting FULL RAG with JD Analysis for: {task_context}")
-        if ai_meta_id:
-            update_ai_progress(ai_meta_id, 30, "Starting JD Analysis", f"Preparing to analyze Job Descriptions for task: {task_context}")
-        
-        return full_rag_jd_analysis(task_description, employees, top_k, ai_meta_id, task_title)
+        # STEP 3: For non-process tasks, use department-based analysis
+        print("🔍 Non-process task - using department-based analysis...")
+        return department_based_analysis(task_description, employees)
         
     except Exception as e:
         print(f"❌ Enhanced RAG error: {e}")
         import traceback
         traceback.print_exc()
-        if ai_meta_id:
-            update_ai_progress(ai_meta_id, 0, "Error", f"Error in RAG analysis: {str(e)}")
         return []
-
-def full_rag_jd_analysis(task_description, employees, top_k=3, ai_meta_id=None, task_title=None):
-    """
-    FULL RAG Analysis using AI to analyze Job Descriptions and Task requirements
-    """
-    try:
-        if not client:
-            print("⚠️ OpenAI client not available, using fallback")
-            return department_based_analysis(task_description, employees, top_k=3)
-        
-        # Combine task title and description for better context
-        full_task_context = f"{task_title or ''} {task_description}".strip()
-        task_display = task_title or task_description[:60] + "..." if len(task_description) > 60 else task_description
-        
-        if ai_meta_id:
-            update_ai_progress(ai_meta_id, 35, "Analyzing Task Context", f"Extracting requirements from: {task_display}")
-        
-        # Filter employees with JD URLs
-        employees_with_jd = [emp for emp in employees if emp.get('job_description_url')]
-        employees_without_jd = [emp for emp in employees if not emp.get('job_description_url')]
-        
-        print(f"📊 Employees with JD: {len(employees_with_jd)}, without JD: {len(employees_without_jd)}")
-        
-        recommendations = []
-        
-        # Process employees with JD using AI analysis
-        if employees_with_jd:
-            if ai_meta_id:
-                update_ai_progress(ai_meta_id, 40, "Fetching Job Descriptions", f"Loading JDs for {len(employees_with_jd)} employees")
-            
-            for i, employee in enumerate(employees_with_jd[:10]):  # Limit to 10 for performance
-                try:
-                    jd_url = employee.get('job_description_url')
-                    if not jd_url:
-                        continue
-                    
-                    if ai_meta_id:
-                        progress = 40 + int((i / min(len(employees_with_jd), 10)) * 40)
-                        employee_name = employee.get('name', 'Employee')
-                        update_ai_progress(ai_meta_id, progress, "Analyzing Job Descriptions", 
-                                         f"Analyzing JD for {employee_name} against task: {task_display} ({i+1}/{min(len(employees_with_jd), 10)})")
-                    
-                    # Fetch JD content (simplified - in production, you'd fetch from Google Drive)
-                    # For now, we'll use AI to analyze based on role, title, and task requirements
-                    jd_analysis = analyze_employee_jd_with_ai(
-                        task_description=full_task_context,
-                        task_title=task_title or task_description,
-                        employee=employee,
-                        ai_meta_id=ai_meta_id
-                    )
-                    
-                    if jd_analysis and jd_analysis.get('fit_score', 0) >= 60:
-                        recommendations.append(jd_analysis)
-                        
-                except Exception as emp_error:
-                    print(f"⚠️ Error analyzing employee {employee.get('name')}: {emp_error}")
-                    continue
-        
-        # Process employees without JD using basic analysis
-        if employees_without_jd and len(recommendations) < top_k:
-            if ai_meta_id:
-                update_ai_progress(ai_meta_id, 85, "Analyzing Employees Without JD", "Using role and department matching")
-            
-            basic_recommendations = department_based_analysis(task_description, employees_without_jd, top_k=top_k - len(recommendations))
-            recommendations.extend(basic_recommendations)
-        
-        # Sort by fit score and return top_k
-        recommendations.sort(key=lambda x: x.get('fit_score', 0), reverse=True)
-        top_recommendations = recommendations[:top_k]
-        
-        if ai_meta_id:
-            update_ai_progress(ai_meta_id, 95, "Finalizing Recommendations", 
-                             f"Generated {len(top_recommendations)} recommendations")
-        
-        print(f"✅ Generated {len(top_recommendations)} RAG recommendations")
-        return top_recommendations
-        
-    except Exception as e:
-        print(f"❌ Full RAG JD Analysis error: {e}")
-        import traceback
-        traceback.print_exc()
-        if ai_meta_id:
-            update_ai_progress(ai_meta_id, 0, "Error", f"Error in JD analysis: {str(e)}")
-        return department_based_analysis(task_description, employees, top_k=3)
-
-def analyze_employee_jd_with_ai(task_description, task_title, employee, ai_meta_id=None):
-    """
-    Use AI to analyze employee JD against task requirements
-    """
-    try:
-        employee_name = employee.get('name', 'Unknown')
-        employee_role = employee.get('role', '')
-        employee_title = employee.get('title', '')
-        employee_department = employee.get('department', '')
-        employee_skills = employee.get('skills', [])
-        jd_url = employee.get('job_description_url', '')
-        
-        # Build employee profile summary
-        employee_profile = f"""
-Employee Profile:
-- Name: {employee_name}
-- Role: {employee_role}
-- Title: {employee_title}
-- Department: {employee_department}
-- Skills: {', '.join(employee_skills) if isinstance(employee_skills, list) else str(employee_skills)}
-- Job Description Available: {'Yes' if jd_url else 'No'}
-"""
-        
-        prompt = f"""
-You are an HR expert analyzing employee-task fit using Job Descriptions and role information.
-
-TASK REQUIREMENTS:
-Title: {task_title}
-Description: {task_description}
-
-EMPLOYEE PROFILE:
-{employee_profile}
-
-Analyze how well this employee matches the task requirements based on:
-1. Role alignment with task requirements
-2. Department relevance
-3. Skills match
-4. Job Description content (if available, consider typical responsibilities for this role)
-5. Experience level
-
-Return ONLY valid JSON in this exact format:
-{{
-    "fit_score": 85,
-    "skills_match": 90,
-    "role_alignment": 80,
-    "jd_relevance": 75,
-    "overall_fit": "excellent",
-    "key_qualifications": ["Qualification 1", "Qualification 2", "Qualification 3"],
-    "reason": "Detailed explanation of why this employee is suitable for the task",
-    "confidence": "high"
-}}
-
-Fit score should be 0-100 based on overall match.
-"""
-        
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are an HR expert. Return ONLY valid JSON. Do not include markdown or code blocks."
-                },
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2,
-            max_tokens=500,
-            timeout=20
-        )
-        
-        response_text = response.choices[0].message.content.strip()
-        analysis = safe_json_parse(response_text, {})
-        
-        if not analysis or not analysis.get('fit_score'):
-            # Fallback to basic scoring
-            return create_basic_recommendation(employee, task_description)
-        
-        # Build recommendation from AI analysis
-        recommendation = {
-            'employee_id': employee['id'],
-            'employee_name': employee_name,
-            'employee_role': employee_role,
-            'employee_department': employee_department,
-            'fit_score': analysis.get('fit_score', 70),
-            'skills_match': analysis.get('skills_match', 0),
-            'role_alignment': analysis.get('role_alignment', 0),
-            'jd_relevance': analysis.get('jd_relevance', 0),
-            'overall_fit': analysis.get('overall_fit', 'moderate'),
-            'key_qualifications': analysis.get('key_qualifications', [
-                f"Role: {employee_role}",
-                f"Department: {employee_department}"
-            ]),
-            'reason': analysis.get('reason', f"{employee_name} matches task requirements based on role and skills"),
-            'confidence': analysis.get('confidence', 'medium'),
-            'rag_enhanced': True,
-            'jd_analyzed': bool(jd_url),
-            'assignment_type': 'ai_jd_analysis',
-            'role_based_assignment': False
-        }
-        
-        return recommendation
-        
-    except Exception as e:
-        print(f"⚠️ Error in AI JD analysis for {employee.get('name')}: {e}")
-        return create_basic_recommendation(employee, task_description)
-
-def create_basic_recommendation(employee, task_description):
-    """Create a basic recommendation when AI analysis fails"""
-    task_lower = task_description.lower()
-    employee_role = (employee.get('role') or '').lower()
-    employee_department = (employee.get('department') or '').lower()
-    
-    score = 50  # Base score
-    
-    # Role matching
-    if employee_role and any(word in task_lower for word in employee_role.split() if len(word) > 3):
-        score += 20
-    
-    # Department matching
-    dept_keywords = {
-        'supply chain': ['logistics', 'shipment', 'inventory', 'customs'],
-        'sales': ['client', 'deal', 'agreement', 'invoice'],
-        'product': ['product', 'quality', 'specification'],
-        'finance': ['payment', 'bank', 'tax', 'financial']
-    }
-    
-    for dept, keywords in dept_keywords.items():
-        if dept in employee_department:
-            if any(kw in task_lower for kw in keywords):
-                score += 15
-            break
-    
-    return {
-        'employee_id': employee['id'],
-        'employee_name': employee.get('name', 'Unknown'),
-        'employee_role': employee.get('role', ''),
-        'employee_department': employee.get('department', ''),
-        'fit_score': min(score, 100),
-        'key_qualifications': [
-            f"Role: {employee.get('role', 'N/A')}",
-            f"Department: {employee.get('department', 'N/A')}"
-        ],
-        'reason': f"{employee.get('name')} matches based on role and department",
-        'rag_enhanced': False,
-        'assignment_type': 'basic_analysis'
-    }
-def department_based_analysis(task_description, employees, top_k=3):
+def department_based_analysis(task_description, employees):
     """
     Department-based analysis for non-process tasks
-    Returns top_k recommendations (default: 3)
     """
     task_lower = task_description.lower()
     recommendations = []
@@ -4173,9 +3578,16 @@ def department_based_analysis(task_description, employees, top_k=3):
             print(f"⚠️ Error processing employee {employee.get('name', 'Unknown')}: {emp_error}")
             continue
     
-    # Sort and return top_k recommendations
+    # Sort and return top recommendations
     sorted_recommendations = sorted(recommendations, key=lambda x: x['fit_score'], reverse=True)
-    return sorted_recommendations[:top_k]
+    top_score = sorted_recommendations[0]['fit_score'] if sorted_recommendations else 0
+    
+    if top_score > 80:
+        return sorted_recommendations[:1]
+    elif top_score >= 60:
+        return sorted_recommendations[:min(2, len(sorted_recommendations))]
+    else:
+        return sorted_recommendations[:min(3, len(sorted_recommendations))]
 
 # Update the main function to use the corrected approach
 def corrected_process_employee_recommendations_for_task(task, employees, ai_meta_id):
@@ -4200,18 +3612,15 @@ def corrected_process_employee_recommendations_for_task(task, employees, ai_meta
         if is_predefined_process:
             strategy = "role_based_predefined_process"
             activity = f"Using role-based assignment for predefined process (Role: {recommended_role})"
-            details = f"Analyzing role match: {recommended_role}"
         else:
             strategy = "full_rag_ai_classified"
-            activity = "Starting full RAG analysis with JD documents"
-            details = "Analyzing task requirements and preparing to match with employee Job Descriptions"
+            activity = "Starting full RAG analysis with JD documents for AI-classified task"
         
         update_data = {
             "output_json": {
                 "status": "processing",
                 "progress": 20,
                 "current_activity": activity,
-                "activity_details": details,
                 "task_id": task['id'],
                 "employees_analyzed": len(employees),
                 "rag_enhanced": True,
@@ -4234,13 +3643,9 @@ def corrected_process_employee_recommendations_for_task(task, employees, ai_meta
         else:
             # 🎯 AI-CLASSIFIED: Use full RAG with JD analysis
             print(f"🔍 AI-CLASSIFIED TASK: Using full RAG analysis with JD documents")
-            task_title = task.get('task_description', '').split(':')[0] if ':' in task.get('task_description', '') else None
         rag_recommendations = enhanced_role_based_employee_recommendations(
             task_description=task['task_description'],
-                employees=employees,
-                top_k=3,
-                ai_meta_id=ai_meta_id,
-                task_title=task_title
+            employees=employees
         )
         
         print(f"✅ Recommendation function returned {len(rag_recommendations)} recommendations")
@@ -4272,15 +3677,10 @@ def corrected_process_employee_recommendations_for_task(task, employees, ai_meta
         }).eq("id", task['id']).execute()
         
         # Step 4: Final update
-        jd_analyzed_count = len([r for r in rag_recommendations if r.get('jd_analyzed')])
-        ai_analyzed_count = len([r for r in rag_recommendations if r.get('rag_enhanced')])
-        
         final_update = {
             "output_json": {
                 "status": "completed",
                 "progress": 100,
-                "current_activity": "Recommendations Complete",
-                "activity_details": f"Generated {len(rag_recommendations)} recommendations ({jd_analyzed_count} with JD analysis, {ai_analyzed_count} AI-enhanced)",
                 "task_id": task['id'],
                 "recommendations_generated": len(rag_recommendations),
                 "processing_time": processing_time,
@@ -4288,8 +3688,6 @@ def corrected_process_employee_recommendations_for_task(task, employees, ai_meta
                 "recommendation_count": len(rag_recommendations),
                 "assignment_strategy": strategy,
                 "role_based_assignments": len([r for r in rag_recommendations if r.get('role_based_assignment')]),
-                "jd_analyzed_count": jd_analyzed_count,
-                "ai_analyzed_count": ai_analyzed_count,
                 "is_predefined_process": is_predefined_process,
                 "recommended_role": recommended_role if is_predefined_process else None
             },

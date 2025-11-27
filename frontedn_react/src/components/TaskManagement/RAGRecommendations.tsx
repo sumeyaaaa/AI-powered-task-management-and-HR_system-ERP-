@@ -192,15 +192,14 @@ export const RAGRecommendations: React.FC<RAGRecommendationsProps> = ({
         </div>
       ) : (
         <>
-          <div className="rag-summary">
-            <p><strong>{recommendations.length}</strong> recommendation(s) found</p>
-            {strategicMeta.total_employees_considered && (
+          {strategicMeta.total_employees_considered && (
+            <div className="rag-summary">
               <p className="rag-meta">Employees analyzed: {strategicMeta.total_employees_considered}</p>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="rag-list">
-            {recommendations.map((rec, index) => (
+            {recommendations.slice(0, 3).map((rec, index) => (
               <div key={index} className="rag-card">
                 <div className="rag-card-header">
                   <div>

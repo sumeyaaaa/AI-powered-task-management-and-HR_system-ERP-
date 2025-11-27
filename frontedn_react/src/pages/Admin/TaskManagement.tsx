@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { taskService } from '../../services/task';
+import { employeeService } from '../../services/employee';
 import { Task, TaskAttachment, TaskNote } from '../../types';
+import { Employee } from '../../types/employee';
 import { Button } from '../../components/Common/UI/Button';
 import { AITaskBuilder } from '../../components/TaskManagement/AITaskBuilder';
 import { RAGRecommendations } from '../../components/TaskManagement/RAGRecommendations';
@@ -28,6 +31,7 @@ const statusOptions: StatusFilter[] = [
 const priorityOptions: Array<'all' | Task['priority']> = ['all', 'urgent', 'high', 'medium', 'low'];
 
 const TaskManagement: React.FC = () => {
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
@@ -39,6 +43,8 @@ const TaskManagement: React.FC = () => {
   const [taskAttachments, setTaskAttachments] = useState<TaskAttachment[]>([]);
   const [notesLoading, setNotesLoading] = useState(false);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
+  const [employeesLoading, setEmployeesLoading] = useState(true);
   const [filters, setFilters] = useState({
     status: 'all' as StatusFilter,
     assignment: 'all',
@@ -53,7 +59,34 @@ const TaskManagement: React.FC = () => {
 
   useEffect(() => {
     loadTasks();
+    loadAllEmployees();
   }, []);
+
+  const loadAllEmployees = async () => {
+    try {
+      setEmployeesLoading(true);
+      const data = await employeeService.getAllEmployees(true);
+      // Handle different response formats
+      let employeesList: Employee[] = [];
+      if (Array.isArray(data)) {
+        employeesList = data;
+      } else if (data && typeof data === 'object' && 'employees' in data) {
+        employeesList = Array.isArray((data as any).employees) ? (data as any).employees : [];
+      } else if (data && typeof data === 'object' && 'data' in data) {
+        employeesList = Array.isArray((data as any).data) ? (data as any).data : [];
+      }
+      console.log('✅ Loaded employees:', employeesList.length);
+      if (employeesList.length > 0) {
+        console.log('Sample employees:', employeesList.slice(0, 3).map(e => ({ id: e.id, name: e.name, is_active: e.is_active })));
+      }
+      setAllEmployees(employeesList);
+    } catch (err) {
+      console.error('❌ Failed to load employees:', err);
+      setAllEmployees([]);
+    } finally {
+      setEmployeesLoading(false);
+    }
+  };
 
   // Check for task ID from notification navigation (runs on mount and when tasks change)
   useEffect(() => {
@@ -117,17 +150,44 @@ const TaskManagement: React.FC = () => {
     }
   };
 
+  // Helper function to get display name (sanitize IDs)
+  const getDisplayName = (name?: string | null) => {
+    if (!name) return '';
+    // Strip leading IDs like "12345 - John Doe" or "#123 | Jane"
+    const cleaned = name.replace(/^[^A-Za-z]*[0-9]+[\s\-\|:_]+/, '').trim();
+    return cleaned || name;
+  };
+
   const employees = useMemo(() => {
-    const set = new Set<string>();
-    tasks.forEach(task => {
-      if (typeof task.assigned_to === 'string' && task.assigned_to.trim()) {
-        set.add(task.assigned_to.trim());
-      } else if (task.employees?.name) {
-        set.add(task.employees.name);
-      }
-    });
-    return Array.from(set).sort();
-  }, [tasks]);
+    console.log('Processing employees, allEmployees count:', allEmployees.length);
+    
+    // Use all employees - return array of objects with id and display name
+    const employeeList = allEmployees
+      .filter(emp => {
+        // Check if employee exists and has a name
+        if (!emp || !emp.id) return false;
+        if (!emp.name || emp.name.trim() === '') return false;
+        // Check if employee is active (default to true if not specified)
+        const isActive = emp.is_active !== false;
+        return isActive;
+      })
+      .map(emp => {
+        const displayName = getDisplayName(emp.name) || emp.name;
+        return {
+          id: emp.id,
+          name: displayName,
+          originalName: emp.name
+        };
+      })
+      .filter(emp => emp.name && emp.name.trim() !== '') // Remove empty names
+      .sort((a, b) => a.name.localeCompare(b.name)); // Sort alphabetically by display name
+    
+    console.log('Processed employees for filter:', employeeList.length);
+    if (employeeList.length > 0) {
+      console.log('First few employees:', employeeList.slice(0, 5));
+    }
+    return employeeList;
+  }, [allEmployees]);
 
   const objectives = useMemo(() => {
     const set = new Set<string>();
@@ -151,8 +211,17 @@ const TaskManagement: React.FC = () => {
           if (filters.assignment === 'unassigned' && hasAssignee) return false;
         }
         if (filters.employee !== 'all') {
-          const name = task.employees?.name || task.assigned_to;
-          if ((name ?? '') !== filters.employee) return false;
+          // Check if any assigned employee matches the filter
+          const taskEmployeeNames = [
+            getDisplayName(task.employees?.name || task.assigned_to_name || ''),
+            // Also check assigned_to_multiple if it exists
+            ...(task.assigned_to_multiple || []).map((empId: string) => {
+              const emp = allEmployees.find(e => e.id === empId);
+              return emp ? getDisplayName(emp.name) : '';
+            })
+          ].filter(name => name); // Remove empty names
+          
+          if (!taskEmployeeNames.includes(filters.employee)) return false;
         }
         if (filters.priority !== 'all' && (task.priority || 'low') !== filters.priority) {
           return false;
@@ -329,18 +398,35 @@ const TaskManagement: React.FC = () => {
           </div>
 
           <div>
-            <label>Employee</label>
+            <label>Employee {employees.length > 0 && `(${employees.length})`}</label>
             <select
               value={filters.employee}
               onChange={(e) => handleFilterChange('employee', e.target.value)}
+              disabled={employeesLoading}
             >
               <option value="all">All employees</option>
-              {employees.map(name => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
+              {employeesLoading ? (
+                <option value="" disabled>Loading employees...</option>
+              ) : employees.length > 0 ? (
+                employees.map(emp => (
+                  <option key={emp.id} value={emp.name}>
+                    {emp.name}
+                  </option>
+                ))
+              ) : (
+                <option value="" disabled>No employees available</option>
+              )}
             </select>
+            {!employeesLoading && employees.length === 0 && allEmployees.length > 0 && (
+              <small style={{ color: '#ff6b6b', display: 'block', marginTop: '4px' }}>
+                No active employees found (Total: {allEmployees.length})
+              </small>
+            )}
+            {!employeesLoading && allEmployees.length === 0 && (
+              <small style={{ color: '#ff6b6b', display: 'block', marginTop: '4px' }}>
+                Failed to load employees. Check console for details.
+              </small>
+            )}
           </div>
 
           <div>
@@ -448,6 +534,12 @@ const TaskManagement: React.FC = () => {
     }
   };
 
+  const openTaskDetail = (task: Task) => {
+    if (!task?.id) return;
+    localStorage.setItem('current_task_id', task.id);
+    navigate(`/admin/task-management/${task.id}`);
+  };
+
   const renderCardLayout = () => {
     if (loading) {
       return <div className="loading">Loading tasks…</div>;
@@ -479,7 +571,7 @@ const TaskManagement: React.FC = () => {
                 key={task.id}
                 data-task-id={task.id}
                 className={`task-card ${selectedTask?.id === task.id ? 'active' : ''} ${pendingTaskId === task.id ? 'highlighted' : ''}`}
-                onClick={() => handleSelectTask(task)}
+                onClick={() => openTaskDetail(task)}
               >
                 <div className="task-card-header">
                   <div>
@@ -527,11 +619,22 @@ const TaskManagement: React.FC = () => {
                 </div>
 
                 <div className="task-card-actions" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectTask(task);
+                    }}
+                  >
+                    👁️ Quick Preview
+                  </Button>
                   {task.strategic_metadata && (
                     <Button
                       variant="secondary"
                       size="small"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         if (selectedTask?.id === task.id) {
                           setDetailTab('details');
                         } else {
@@ -546,7 +649,8 @@ const TaskManagement: React.FC = () => {
                   <Button
                     variant="primary"
                     size="small"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       if (selectedTask?.id === task.id) {
                         setDetailTab('recommendations');
                       } else {

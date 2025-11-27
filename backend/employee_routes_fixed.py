@@ -1,7 +1,8 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 import os
 from datetime import datetime
 from auth import token_required
+from notification_routes import create_admin_event_notification
 import secrets
 import uuid
 
@@ -103,6 +104,25 @@ def create_employee():
         
         if result.data:
             employee = result.data[0]
+            
+            # Notify admins of the new employee (exclude creator if they have employee_id)
+            creator_employee_id = None
+            if hasattr(g, 'user') and g.user:
+                creator_employee_id = g.user.get('employee_id')
+            
+            try:
+                create_admin_event_notification(
+                    notification_type="employee_created",
+                    message=f"New employee added: {employee.get('name', 'Unnamed')} ({employee.get('department', 'General')})",
+                    meta={
+                        "employee_id": employee.get('id'),
+                        "email": employee.get('email'),
+                        "name": employee.get('name')
+                    },
+                    exclude_employee_id=creator_employee_id
+                )
+            except Exception as notify_error:
+                print(f"⚠️ Failed to notify admins about new employee: {notify_error}")
             return jsonify({
                 'success': True, 
                 'employee': employee,

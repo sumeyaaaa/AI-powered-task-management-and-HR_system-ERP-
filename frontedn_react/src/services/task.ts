@@ -420,6 +420,40 @@ class TaskService {
       };
     }
   }
+
+  async getRAGRecommendationsStatus(objectiveId: string): Promise<{
+    success: boolean;
+    tasks?: Array<{
+      task_id: string;
+      task_description: string;
+      status: 'completed' | 'in_progress' | 'pending' | 'failed';
+      progress: number;
+      current_activity: string;
+      recommendations_count: number;
+      ai_meta_id?: string;
+      has_recommendations: boolean;
+      error?: string;
+    }>;
+    summary?: {
+      total_tasks: number;
+      completed: number;
+      in_progress: number;
+      pending: number;
+      failed: number;
+    };
+    error?: string;
+  }> {
+    try {
+      const response = await api.get(`/api/objectives/${objectiveId}/rag-recommendations-status`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Error getting RAG recommendations status:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to get RAG recommendations status',
+      };
+    }
+  }
 }
 
 const taskService = new TaskService();

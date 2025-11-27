@@ -27,14 +27,18 @@ export const TaskManagement: React.FC = () => {
     loadTasks();
   }, [filters.status, filters.priority, filters.assigned_to]);
 
+  const stripIdPrefix = (value: string) => {
+    return value.replace(/^[^A-Za-z]*[0-9]+[\s\-\|:_]+/, '').trim();
+  };
+
   const displayedTasks = useMemo(() => {
     if (!filters.search) return tasks;
     const query = filters.search.toLowerCase();
     return tasks.filter(task =>
       task.title.toLowerCase().includes(query) ||
       task.description.toLowerCase().includes(query) ||
-      task.assigned_to_name?.toLowerCase().includes(query) ||
-      task.assigned_to.toLowerCase().includes(query)
+      stripIdPrefix(task.assigned_to_name || '').toLowerCase().includes(query) ||
+      stripIdPrefix(task.assigned_to || '').toLowerCase().includes(query)
     );
   }, [tasks, filters.search]);
 
