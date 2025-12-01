@@ -24,6 +24,24 @@ export const RAGRecommendations: React.FC<RAGRecommendationsProps> = ({
   const strategicMeta = task.strategic_metadata || {};
   const isRAGEnhanced = strategicMeta.rag_enhanced || false;
   const recommendationsAvailable = strategicMeta.employee_recommendations_available || false;
+  const recommendedRole = strategicMeta.recommended_role || strategicMeta.assigned_role;
+  const [assignmentStrategy, setAssignmentStrategy] = useState<string | null>(strategicMeta.assignment_strategy || null);
+  const [roleMatchingFlow, setRoleMatchingFlow] = useState<boolean>(
+    Boolean(strategicMeta.predefined_process || strategicMeta.assignment_strategy === 'role_based_predefined_process')
+  );
+  const isRoleMatchingStrategy = roleMatchingFlow || assignmentStrategy === 'role_based_predefined_process';
+  const progressTitle = isRoleMatchingStrategy ? '🎯 Role Matching Progress' : '🤖 RAG Analysis Progress';
+  const progressPlaceholder = isRoleMatchingStrategy
+    ? `Matching role${recommendedRole ? `: ${recommendedRole}` : ''}`
+    : 'Analyzing employees...';
+
+  useEffect(() => {
+    setAssignmentStrategy(strategicMeta.assignment_strategy || null);
+    setRoleMatchingFlow(Boolean(
+      strategicMeta.predefined_process ||
+      strategicMeta.assignment_strategy === 'role_based_predefined_process'
+    ));
+  }, [task.id, strategicMeta.assignment_strategy, strategicMeta.predefined_process]);
 
   useEffect(() => {
     if (recommendationsAvailable) {
@@ -62,10 +80,25 @@ export const RAGRecommendations: React.FC<RAGRecommendationsProps> = ({
     try {
       setGenerating(true);
       setError('');
-      setProgress(0);
+      const initialRoleFlow = isRoleMatchingStrategy;
+      setProgress(initialRoleFlow ? 10 : 0);
+      setCurrentActivity(
+        initialRoleFlow
+          ? `Matching role${recommendedRole ? `: ${recommendedRole}` : ''}`
+          : 'Starting RAG analysis...'
+      );
       const result = await taskService.generateRAGRecommendations(task.id);
       if (result.success && result.ai_meta_id) {
         setRagMetaId(result.ai_meta_id);
+        if (result.assignment_strategy) {
+          setAssignmentStrategy(result.assignment_strategy);
+        }
+        if (typeof result.is_predefined_process === 'boolean') {
+          setRoleMatchingFlow(result.is_predefined_process);
+        }
+        if (result.initial_activity) {
+          setCurrentActivity(result.initial_activity);
+        }
       } else {
         setError(result.error || 'Failed to start RAG analysis');
         setGenerating(false);
@@ -83,11 +116,36 @@ export const RAGRecommendations: React.FC<RAGRecommendationsProps> = ({
     try {
       const result = await taskService.getRAGRecommendationProgress(ragMetaId);
       if (result.success) {
-        if (result.progress !== undefined) {
-          setProgress(result.progress);
+        const latestProgress = result.progress ?? result.output_json?.progress;
+        if (typeof latestProgress === 'number') {
+          setProgress(latestProgress);
         }
-        if (result.current_activity) {
-          setCurrentActivity(result.current_activity);
+
+        const latestStrategy =
+          result.output_json?.assignment_strategy ||
+          (result as any).assignment_strategy;
+        if (latestStrategy) {
+          setAssignmentStrategy(latestStrategy);
+        }
+
+        const isRoleFlowUpdate =
+          typeof result.output_json?.is_predefined_process === 'boolean'
+            ? result.output_json.is_predefined_process
+            : (result as any).is_predefined_process;
+        if (typeof isRoleFlowUpdate === 'boolean') {
+          setRoleMatchingFlow(isRoleFlowUpdate);
+        }
+
+        const activityLine =
+          result.output_json?.current_activity ||
+          result.current_activity ||
+          '';
+        const activityDetails = result.output_json?.activity_details;
+        if (activityLine || activityDetails) {
+          const composed = activityDetails
+            ? `${activityLine || ''}${activityLine ? ' - ' : ''}${activityDetails}`
+            : activityLine;
+          setCurrentActivity(composed);
         }
 
         if (result.status === 'completed') {
@@ -140,8 +198,8 @@ export const RAGRecommendations: React.FC<RAGRecommendationsProps> = ({
           <div className="rag-progress-bar">
             <div className="rag-progress-fill" style={{ width: `${progress}%` }}></div>
           </div>
-          <p className="rag-activity">{currentActivity || 'Analyzing employees...'}</p>
-          <p className="rag-progress-text">{progress}% complete</p>
+          <p className="rag-activity">{currentActivity || progressPlaceholder}</p>
+          <p className="rag-progress-text">{progressTitle} • {progress}% complete</p>
         </div>
       </div>
     );

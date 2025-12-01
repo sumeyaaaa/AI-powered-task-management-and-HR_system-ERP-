@@ -8,7 +8,8 @@ import {
   TaskUpdateData,
   TaskStatus,
   TaskAttachment,
-  TaskNote
+  TaskNote,
+  EmployeeReference
 } from '../types';
 import { api } from './api';
 
@@ -228,15 +229,39 @@ class TaskService {
     }
   }
 
-  async addTaskNote(taskId: string, payload: { notes: string; progress?: number }): Promise<{ success: boolean; message?: string; error?: string }> {
+  async addTaskNote(taskId: string, payload: { notes: string; progress?: number; attached_to?: string; attached_to_multiple?: string[] }): Promise<{ success: boolean; message?: string; error?: string }> {
     try {
-      const response = await api.post(`${this.baseUrl}/${taskId}/add-note`, payload);
+      const sanitizedPayload = {
+        ...payload,
+        attached_to_multiple: payload.attached_to_multiple?.filter(Boolean),
+      };
+      if (!sanitizedPayload.attached_to_multiple?.length) {
+        delete sanitizedPayload.attached_to_multiple;
+      }
+      if (!sanitizedPayload.attached_to) {
+        delete sanitizedPayload.attached_to;
+      }
+      const response = await api.post(`${this.baseUrl}/${taskId}/add-note`, sanitizedPayload);
       return response.data;
     } catch (error: any) {
       console.error('Error adding task note:', error);
       return {
         success: false,
         error: error.response?.data?.error || 'Failed to add note'
+      };
+    }
+  }
+
+  async getAvailableEmployeesForAttachment(taskId: string): Promise<{ success: boolean; employees?: EmployeeReference[]; total?: number; error?: string }> {
+    try {
+      const response = await api.get(`/api/tasks/${taskId}/available-employees`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Error fetching available employees for attachment:', error);
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to load employees',
+        employees: [],
       };
     }
   }
@@ -345,6 +370,12 @@ class TaskService {
   async generateRAGRecommendations(taskId: string): Promise<{
     success: boolean;
     ai_meta_id?: string;
+    assignment_strategy?: string;
+    is_predefined_process?: boolean;
+    template?: string | null;
+    recommended_role?: string | null;
+    initial_activity?: string;
+    initial_details?: string;
     error?: string;
   }> {
     try {

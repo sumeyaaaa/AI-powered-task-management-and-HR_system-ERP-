@@ -25,6 +25,9 @@ const Notifications: React.FC = () => {
     loadNotifications();
   }, [loadNotifications]);
 
+  const isTaskOwnerConfirmation = (notification: Notification) =>
+    Boolean(notification.meta?.is_task_owner_confirmation);
+
   const handleNotificationClick = (notification: Notification) => {
     if (!notification.is_read) {
       markAsRead(notification.id);
@@ -171,13 +174,13 @@ const Notifications: React.FC = () => {
                     </span>
                     {notification.meta?.task_id && (
                       <Button
-                        variant="ghost"
+                        variant={isTaskOwnerConfirmation(notification) ? "primary" : "ghost"}
                         size="small"
                         onClick={() => {
                           handleNotificationClick(notification);
                         }}
                       >
-                        View Task →
+                        {isTaskOwnerConfirmation(notification) ? "Go to Task →" : "View Task →"}
                       </Button>
                     )}
                   </div>

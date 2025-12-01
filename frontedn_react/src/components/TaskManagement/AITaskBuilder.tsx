@@ -6,7 +6,7 @@ import { Button } from '../Common/UI/Button';
 import { GeneratedTaskCard } from './GeneratedTaskCard';
 import './AITaskBuilder.css';
 
-type TemplateKey = 'auto' | 'order_to_delivery';
+type TemplateKey = 'auto' | 'order_to_delivery' | 'stock_to_delivery' | 'employee_onboarding';
 
 interface EditableTask extends Partial<Task> {
   isNew?: boolean;
@@ -27,6 +27,14 @@ const PROCESS_TEMPLATES: Record<
   order_to_delivery: {
     label: 'Order to Delivery (13-step process)',
     description: 'Use the predefined order-to-delivery process with recommended owners.',
+  },
+  stock_to_delivery: {
+    label: 'Stock to Delivery (13-step process)',
+    description: 'Use the predefined stock-to-delivery process with recommended owners.',
+  },
+  employee_onboarding: {
+    label: 'Employee Onboarding (8-step process)',
+    description: 'Use the predefined employee onboarding process with recommended owners.',
   },
 };
 
@@ -117,6 +125,16 @@ export const AITaskBuilder: React.FC<AITaskBuilderProps> = ({ onTasksGenerated }
         payload.title = `Order to Delivery - ${payload.title}`;
         payload.description = `${payload.description || ''}\n\nThis goal should follow the Order to Delivery process.`;
       }
+      
+      if (formData.template === 'stock_to_delivery' && !payload.title.toLowerCase().includes('stock to delivery')) {
+        payload.title = `Stock to Delivery - ${payload.title}`;
+        payload.description = `${payload.description || ''}\n\nThis goal should follow the Stock to Delivery process.`;
+      }
+      
+      if (formData.template === 'employee_onboarding' && !payload.title.toLowerCase().includes('employee onboarding')) {
+        payload.title = `Employee Onboarding - ${payload.title}`;
+        payload.description = `${payload.description || ''}\n\nThis goal should follow the Employee Onboarding process.`;
+      }
 
       const result = await taskService.generateTasksFromGoal(payload);
       if (!result.success) {
@@ -136,10 +154,8 @@ export const AITaskBuilder: React.FC<AITaskBuilderProps> = ({ onTasksGenerated }
         setAiTasks(generatedTasks);
         setSuccess(result.message || 'AI tasks generated. You can edit them below.');
         
-        // Start polling for RAG recommendation progress if we have a goal
-        if (result.goal?.id) {
-          startRAGProgressPolling(result.goal.id);
-        }
+        // RAG recommendations will only be polled when user clicks "Recommend Employee" button
+        // Don't start polling automatically after task generation
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -272,22 +288,33 @@ export const AITaskBuilder: React.FC<AITaskBuilderProps> = ({ onTasksGenerated }
       try {
         const status = await taskService.getRAGRecommendationsStatus(objectiveId);
         if (status.success && status.tasks && status.summary) {
-          setRagProgress({
-            tasks: status.tasks,
-            summary: status.summary
-          });
-          
-          // Stop polling if all tasks are completed or failed
-          if (status.summary.completed + status.summary.failed === status.summary.total_tasks) {
+          // Only set progress if there are actually tasks with RAG activity
+          if (status.summary.total_tasks > 0) {
+            setRagProgress({
+              tasks: status.tasks,
+              summary: status.summary
+            });
+            
+            // Stop polling if all tasks are completed or failed
+            if (status.summary.completed + status.summary.failed === status.summary.total_tasks) {
+              clearInterval(pollInterval);
+              ragPollingIntervalRef.current = null;
+              // Keep RAG progress to show completion status - don't clear it
+              // This allows the UI to know that RAG is complete and show "View Recommendations" buttons
+              // Refresh tasks to get updated recommendations
+              if (goal?.id) {
+                const updatedTasks = await fetchTasksForGoal(goal.id);
+                if (updatedTasks.length) {
+                  setAiTasks(updatedTasks);
+                }
+              }
+              // Don't clear ragProgress - keep it so buttons know RAG is complete
+            }
+          } else {
+            // No tasks with RAG activity - clear progress and stop polling
             clearInterval(pollInterval);
             ragPollingIntervalRef.current = null;
-            // Refresh tasks to get updated recommendations
-            if (goal?.id) {
-              const updatedTasks = await fetchTasksForGoal(goal.id);
-              if (updatedTasks.length) {
-                setAiTasks(updatedTasks);
-              }
-            }
+            setRagProgress(null);
           }
         }
       } catch (err) {
@@ -411,76 +438,6 @@ export const AITaskBuilder: React.FC<AITaskBuilderProps> = ({ onTasksGenerated }
       {error && <div className="inline-error">{error}</div>}
       {success && <div className="inline-success">{success}</div>}
 
-      {ragProgress && ragProgress.summary.total_tasks > 0 && (
-        <div className="rag-progress-indicator" style={{
-          padding: '16px',
-          margin: '16px 0',
-          backgroundColor: '#f8f9fa',
-          borderRadius: '8px',
-          border: '1px solid #e0e0e0'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>
-              🤖 RAG Employee Recommendations Progress
-            </h4>
-            <div style={{ fontSize: '14px', color: '#666' }}>
-              {ragProgress.summary.completed}/{ragProgress.summary.total_tasks} completed
-            </div>
-          </div>
-          
-          <div style={{ marginBottom: '12px' }}>
-            <div style={{ 
-              width: '100%', 
-              height: '8px', 
-              backgroundColor: '#e0e0e0', 
-              borderRadius: '4px',
-              overflow: 'hidden'
-            }}>
-              <div style={{
-                width: `${(ragProgress.summary.completed / ragProgress.summary.total_tasks) * 100}%`,
-                height: '100%',
-                backgroundColor: ragProgress.summary.failed > 0 ? '#ff6b6b' : '#4caf50',
-                transition: 'width 0.3s ease'
-              }} />
-            </div>
-          </div>
-
-          <div style={{ fontSize: '12px', color: '#666', display: 'flex', gap: '16px' }}>
-            <span>✅ Completed: {ragProgress.summary.completed}</span>
-            <span>⏳ In Progress: {ragProgress.summary.in_progress}</span>
-            <span>⏸️ Pending: {ragProgress.summary.pending}</span>
-            {ragProgress.summary.failed > 0 && <span style={{ color: '#ff6b6b' }}>❌ Failed: {ragProgress.summary.failed}</span>}
-          </div>
-
-          {ragProgress.summary.in_progress > 0 && (
-            <div style={{ marginTop: '12px', fontSize: '12px', color: '#666' }}>
-              <strong>Currently processing:</strong>
-              <ul style={{ margin: '8px 0 0 20px', padding: 0 }}>
-                {ragProgress.tasks
-                  .filter(t => t.status === 'in_progress')
-                  .map(task => (
-                    <li key={task.task_id} style={{ marginBottom: '4px' }}>
-                      {task.task_description}... ({task.progress}% - {task.current_activity})
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          )}
-
-          {ragProgress.summary.completed === ragProgress.summary.total_tasks && (
-            <div style={{ 
-              marginTop: '12px', 
-              padding: '8px', 
-              backgroundColor: '#e8f5e9', 
-              borderRadius: '4px',
-              fontSize: '12px',
-              color: '#2e7d32'
-            }}>
-              ✅ All RAG recommendations completed! Employee recommendations are now available for each task.
-            </div>
-          )}
-        </div>
-      )}
 
       {!!aiTasks.length && (
         <div className="ai-tasks-editor">
@@ -507,6 +464,16 @@ export const AITaskBuilder: React.FC<AITaskBuilderProps> = ({ onTasksGenerated }
                 onRecommendationApplied={async () => {
                   await refreshTask(task.id);
                 }}
+                onRAGStarted={() => {
+                  // Restart polling if a task starts RAG process
+                  if (goal?.id) {
+                    startRAGProgressPolling(goal.id);
+                  }
+                }}
+                objectiveRAGStatus={ragProgress ? {
+                  tasks: ragProgress.tasks,
+                  summary: ragProgress.summary
+                } : undefined}
               />
             ))}
           </div>

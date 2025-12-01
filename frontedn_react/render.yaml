@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: frontend-ai-powered-task-management
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run serve
+    envVars:
+      - key: REACT_APP_BACKEND_URL
+        sync: false
+    staticPublishPath: ./build
+

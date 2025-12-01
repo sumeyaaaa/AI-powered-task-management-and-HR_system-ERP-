@@ -6,7 +6,7 @@ A modern HR, task, and ERP assistant for **LeanChem Ethiopia** combining a **Fla
 
 ## 🚀 Highlights
 
-- 👥 **Employee 360** – Rich profiles, JD links, skills, notes, photo management
+- 👥 **Employee managment** – Rich profiles, JD links, skills, notes, photo management
 - 🎯 **AI Task Builder** – Predefined process templates & “Let AI classify tasks” workflow
 - 📊 **Interactive Admin Dashboard** – Live KPIs, status filters, strategic insights
 - 🔔 **Real-time Notifications** – Inbox + bell + deep links to specific tasks (admin & employee)h
@@ -73,7 +73,6 @@ Create `.env` files both in `backend/` and `frontedn_react/`.
 FLASK_SECRET_KEY=change-me
 SUPERADMIN_EMAIL=admin@leanchem.com
 SUPERADMIN_PASSWORD=super-secure-password
-DEFAULT_PASSWORD=1234
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_SERVICE_KEY=SUPABASE_SERVICE_ROLE_KEY
 OPENAI_API_KEY=sk-...
@@ -178,6 +177,7 @@ Recommended: host on Render, Railway, Fly.io, or EC2 with Nginx reverse proxy + 
 ### Frontend (React)
 ```bash
 cd frontedn_react
+npm start
 npm run build
 npm run preview    # optional local check
 ```
@@ -202,14 +202,6 @@ Deploy `dist/` to Netlify, Vercel, or S3 + CloudFront. Ensure `REACT_APP_BACKEND
 | Employees list empty on dashboard | Supabase response may wrap data; React normalizes via `Array.isArray` guard |
 | Notifications redirect to wrong page | Confirm `localStorage.current_task_id` set before navigation |
 
-Additional deep dives live in `AUTHENTICATION_FIXES.md` and inline code comments.
-
----
-
-## 📚 Documentation Extras
-
-- `REACT_LEARNING_GUIDE.md` – Explains project architecture for learners transitioning from Streamlit to React
-- `AUTHENTICATION_FIXES.md` – Living document of auth changes, deployment steps, and security recommendations
 
 ---
 

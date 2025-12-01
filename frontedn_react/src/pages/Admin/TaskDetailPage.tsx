@@ -6,6 +6,7 @@ import { Task, TaskAttachment, TaskNote } from '../../types';
 import { Employee } from '../../types/employee';
 import { Button } from '../../components/Common/UI/Button';
 import { RAGRecommendations } from '../../components/TaskManagement/RAGRecommendations';
+import { formatObjectiveNumber } from '../../utils/helpers';
 import './TaskDetailPage.css';
 
 const TaskDetailPage: React.FC = () => {
@@ -21,6 +22,7 @@ const TaskDetailPage: React.FC = () => {
   const [noteText, setNoteText] = useState('');
   const [noteProgress, setNoteProgress] = useState<number>(0);
   const [submittingNote, setSubmittingNote] = useState(false);
+  const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   
   // Edit mode state
@@ -76,6 +78,23 @@ const TaskDetailPage: React.FC = () => {
     loadNotes();
     loadAttachments();
   }, [loadNotes, loadAttachments]);
+
+  useEffect(() => {
+    if (!task) {
+      setSelectedRecipients([]);
+      return;
+    }
+    const defaults = new Set<string>();
+    if (typeof task.assigned_to === 'string' && task.assigned_to) {
+      defaults.add(task.assigned_to);
+    }
+    (task.assigned_to_multiple || []).forEach((empId) => {
+      if (typeof empId === 'string' && empId) {
+        defaults.add(empId);
+      }
+    });
+    setSelectedRecipients(Array.from(defaults));
+  }, [task]);
 
   const loadEmployees = useCallback(async () => {
     try {
@@ -175,12 +194,29 @@ const TaskDetailPage: React.FC = () => {
     await loadTask();
   };
 
+  const handleRecipientToggle = (empId: string) => {
+    if (selectedRecipients.includes(empId)) {
+      setSelectedRecipients(prev => prev.filter(id => id !== empId));
+    } else {
+      setSelectedRecipients(prev => [...prev.filter(id => id !== '__none__'), empId]);
+    }
+  };
+
   const handleAddNote = async () => {
     if (!taskId || !noteText.trim()) return;
     try {
       setSubmittingNote(true);
-      await taskService.addTaskNote(taskId, { notes: noteText.trim(), progress: noteProgress });
+      // Filter out "None" option and empty values
+      const notifyIds = selectedRecipients.filter(id => id && id !== '__none__');
+      const [attached_to, ...rest] = notifyIds;
+      await taskService.addTaskNote(taskId, { 
+        notes: noteText.trim(), 
+        progress: noteProgress,
+        attached_to,
+        attached_to_multiple: rest.length ? rest : undefined
+      });
       setNoteText('');
+      setSelectedRecipients([]);
       await Promise.all([loadNotes(), loadTask()]);
     } finally {
       setSubmittingNote(false);
@@ -234,6 +270,29 @@ const TaskDetailPage: React.FC = () => {
     if (!employeeId) return '';
     const match = Array.isArray(employees) ? employees.find(emp => emp.id === employeeId) : undefined;
     return match?.name || sanitizeEmployeeName(match?.name) || employeeId;
+  };
+
+  const getNoteRecipientNames = (note: TaskNote) => {
+    const names = new Set<string>();
+    if (note.attached_to) {
+      names.add(getEmployeeNameById(note.attached_to) || note.attached_to);
+    }
+    (note.attached_to_multiple || []).forEach((empId) => {
+      names.add(getEmployeeNameById(empId) || empId);
+    });
+    if (note.attached_to_name) {
+      names.add(note.attached_to_name);
+    }
+    if (Array.isArray(note.attached_to_multiple_names)) {
+      note.attached_to_multiple_names.forEach((val: any) => {
+        if (typeof val === 'string') {
+          names.add(val);
+        } else if (val && typeof val === 'object' && 'name' in val && val.name) {
+          names.add(val.name);
+        }
+      });
+    }
+    return Array.from(names).filter(Boolean);
   };
 
   const handleMetadataValueChange = (key: string, newValue: any) => {
@@ -371,7 +430,7 @@ const TaskDetailPage: React.FC = () => {
             </div>
             <div className="meta-item">
               <span className="meta-label">Objective Number:</span>
-              <span className="meta-value highlight">{task.strategic_metadata?.objective_number || task.objectives?.pre_number || '—'}</span>
+              <span className="meta-value highlight">{formatObjectiveNumber(task.objectives?.pre_number || task.strategic_metadata?.objective_number)}</span>
             </div>
           </div>
         </div>
@@ -856,6 +915,65 @@ const TaskDetailPage: React.FC = () => {
               onChange={(e) => setNoteText(e.target.value)}
               rows={4}
             />
+            <label>
+              Notify teammates (optional)
+              <p className="muted" style={{ fontSize: '12px', marginBottom: '8px' }}>
+                Select teammates who should receive a notification about this update.
+              </p>
+              <div style={{ 
+                border: '1px solid #ddd', 
+                borderRadius: '4px', 
+                padding: '8px', 
+                maxHeight: '200px', 
+                overflowY: 'auto',
+                backgroundColor: '#fff'
+              }}>
+                {employees
+                  .filter(emp => emp?.id)
+                  .map((emp) => {
+                    const empId = emp.id!;
+                    const isSelected = selectedRecipients.includes(empId);
+                    return (
+                      <label
+                        key={empId}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '6px 8px',
+                          cursor: 'pointer',
+                          borderRadius: '4px',
+                          marginBottom: '4px',
+                          backgroundColor: isSelected ? '#e3f2fd' : 'transparent',
+                          transition: 'background-color 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) e.currentTarget.style.backgroundColor = '#f5f5f5';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleRecipientToggle(empId)}
+                          style={{ marginRight: '8px', cursor: 'pointer' }}
+                        />
+                        <span style={{ flex: 1 }}>
+                          {sanitizeEmployeeName(emp.name) || emp.name || emp.email || 'Unknown'}
+                          {emp.role && <span style={{ color: '#666', marginLeft: '4px' }}>({emp.role})</span>}
+                          {emp.department && <span style={{ color: '#999', marginLeft: '4px' }}>· {emp.department}</span>}
+                        </span>
+                      </label>
+                    );
+                  })}
+              </div>
+            </label>
+            {selectedRecipients.length > 0 && (
+              <p className="muted" style={{ marginTop: '8px' }}>
+                Notifying: {selectedRecipients.filter(id => id !== '__none__').map(id => getEmployeeNameById(id) || id).join(', ')}
+              </p>
+            )}
             <Button variant="primary" disabled={!noteText.trim() || submittingNote} onClick={handleAddNote}>
               {submittingNote ? 'Saving…' : 'Post Note'}
             </Button>
@@ -891,6 +1009,24 @@ const TaskDetailPage: React.FC = () => {
                       <span className="note-attachments">📎 {note.attachments_count} attachment(s)</span>
                     )}
                   </div>
+                  {(() => {
+                    const recipients = getNoteRecipientNames(note);
+                    if (!recipients.length && !note.is_attached_to_me) {
+                      return null;
+                    }
+                    return (
+                      <div style={{ fontSize: '12px', color: '#555', marginTop: '6px' }}>
+                        {recipients.length > 0 && (
+                          <span>👥 Notified: {recipients.join(', ')}</span>
+                        )}
+                        {note.is_attached_to_me && (
+                          <span style={{ marginLeft: recipients.length > 0 ? 8 : 0, color: '#2e7d32', fontWeight: 600 }}>
+                            You were notified
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>

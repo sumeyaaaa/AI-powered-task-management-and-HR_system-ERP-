@@ -20,12 +20,21 @@
    - **Name**: `leanchem-backend` (or your preferred name)
    - **Region**: Choose closest to your users
    - **Branch**: `main` (or your deployment branch)
-   - **Root Directory**: `backend` (if Procfile is in backend/) or leave empty (if Procfile is in root)
+   - **Root Directory**: `backend` (since Procfile is in backend/)
    - **Runtime**: `Python 3`
    - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: 
-     - If Procfile in root: `gunicorn --bind 0.0.0.0:$PORT app:app`
-     - If Procfile in backend: `cd backend && gunicorn --bind 0.0.0.0:$PORT app:app`
+   - **Start Command**: Leave empty (Render will use Procfile automatically)
+   
+   **Important:** Make sure your Procfile is in the `backend/` directory and contains:
+   ```
+   web: gunicorn --config gunicorn_config.py app:app
+   ```
+   
+   The `gunicorn_config.py` file handles all production settings including:
+   - Proper worker configuration
+   - Timeout settings
+   - Logging configuration
+   - PORT from environment variable
 
 ### Step 3: Environment Variables
 
@@ -112,20 +121,25 @@ REACT_APP_BACKEND_URL=https://your-backend.onrender.com
    - **Value**: `https://your-backend.onrender.com`
 6. Deploy!
 
-#### Option C: Render (Static Site)
+#### Option C: Render (Web Service - Recommended for SPA)
+
+**Important:** For React Router to work properly on Render, use a Web Service (not Static Site) with a Node.js server.
 
 1. Go to Render Dashboard
-2. Click **"New +"** → **"Static Site"**
+2. Click **"New +"** → **"Web Service"**
 3. Connect your repository
 4. Configure:
    - **Name**: `leanchem-frontend`
    - **Root Directory**: `frontedn_react`
+   - **Runtime**: `Node`
    - **Build Command**: `npm install && npm run build`
-   - **Publish Directory**: `build` (for Create React App)
+   - **Start Command**: `npm run serve`
 5. Add environment variable:
    - **Key**: `REACT_APP_BACKEND_URL`
    - **Value**: `https://your-backend.onrender.com`
 6. Deploy!
+
+**Note:** The `server.js` file handles all routes by serving `index.html`, which fixes the "not found" issue when navigating directly to routes like `/login` or refreshing the page.
 
 ---
 

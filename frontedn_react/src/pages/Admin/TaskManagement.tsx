@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { taskService } from '../../services/task';
 import { employeeService } from '../../services/employee';
-import { Task, TaskAttachment, TaskNote } from '../../types';
+import { Task, TaskAttachment, TaskNote, EmployeeReference } from '../../types';
 import { Employee } from '../../types/employee';
 import { Button } from '../../components/Common/UI/Button';
 import { AITaskBuilder } from '../../components/TaskManagement/AITaskBuilder';
@@ -334,11 +334,16 @@ const TaskManagement: React.FC = () => {
     await loadTaskAttachments(selectedTask.id);
   };
 
-  const handleAddNote = async (note: string, progress?: number) => {
+  const handleAddNote = async (note: string, progress?: number, recipients: string[] = []) => {
     if (!selectedTask) return;
+    const notifyIds = recipients.filter(Boolean);
+    const [attached_to, ...rest] = notifyIds;
+    const attached_to_multiple = rest.length ? rest : undefined;
     const result = await taskService.addTaskNote(selectedTask.id, {
       notes: note,
       progress,
+      attached_to,
+      attached_to_multiple,
     });
     if (!result.success) {
       throw new Error(result.error || 'Failed to add note');
@@ -738,7 +743,7 @@ interface TaskDetailPanelProps {
   attachmentsLoading: boolean;
   notesLoading: boolean;
   onUploadAttachment: (file: File) => Promise<void>;
-  onAddNote: (note: string, progress?: number) => Promise<void>;
+  onAddNote: (note: string, progress?: number, recipients?: string[]) => Promise<void>;
   onRefreshAttachments: () => void;
   onRefreshNotes: () => void;
   onStatusChange: (status: Task['status']) => void;
@@ -771,6 +776,14 @@ const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [uploadMessage, setUploadMessage] = useState('');
+  const [availableEmployees, setAvailableEmployees] = useState<EmployeeReference[]>([]);
+  const [availableEmployeesLoading, setAvailableEmployeesLoading] = useState(false);
+  const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
+  const normalizeDisplayName = (value?: string | null) => {
+    if (!value) return '';
+    const cleaned = value.replace(/^[^A-Za-z]*[0-9]+[\s\-\|:_]+/, '').trim();
+    return cleaned || value;
+  };
 
   useEffect(() => {
     setNoteText('');
@@ -782,6 +795,52 @@ const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
     setUploading(false);
     setUploadError('');
     setUploadMessage('');
+    setSelectedRecipients(() => {
+      const defaults = new Set<string>();
+      if (typeof task.assigned_to === 'string' && task.assigned_to) {
+        defaults.add(task.assigned_to);
+      }
+      (task.assigned_to_multiple || []).forEach((empId) => {
+        if (typeof empId === 'string' && empId) {
+          defaults.add(empId);
+        }
+      });
+      return Array.from(defaults);
+    });
+  }, [task.id]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchAvailableEmployees = async () => {
+      if (!task.id) {
+        setAvailableEmployees([]);
+        return;
+      }
+      try {
+        setAvailableEmployeesLoading(true);
+        const response = await taskService.getAvailableEmployeesForAttachment(task.id);
+        if (!isMounted) return;
+        if (response.success) {
+          setAvailableEmployees(response.employees ?? []);
+        } else {
+          console.warn('Failed to load available employees for note notifications', response.error);
+          setAvailableEmployees([]);
+        }
+      } catch (err) {
+        if (isMounted) {
+          console.error('Error loading available employees for note notifications', err);
+          setAvailableEmployees([]);
+        }
+      } finally {
+        if (isMounted) {
+          setAvailableEmployeesLoading(false);
+        }
+      }
+    };
+    fetchAvailableEmployees();
+    return () => {
+      isMounted = false;
+    };
   }, [task.id]);
 
   const handleAttachmentSubmit = async (event: React.FormEvent) => {
@@ -803,6 +862,17 @@ const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
     }
   };
 
+  const handleRecipientChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const values = Array.from(event.target.selectedOptions).map(option => option.value);
+    // If "None" is selected, clear all other selections
+    if (values.includes('__none__')) {
+      setSelectedRecipients(['__none__']);
+    } else {
+      // Remove "None" if other employees are selected
+      setSelectedRecipients(values.filter(v => v !== '__none__'));
+    }
+  };
+
   const handleNoteSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!noteText.trim()) {
@@ -813,9 +883,12 @@ const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
       setNoteSubmitting(true);
       setNoteError('');
       setNoteMessage('');
-      await onAddNote(noteText.trim(), noteProgress);
+      // Filter out "None" option before submitting
+      const recipientsToNotify = selectedRecipients.filter(id => id !== '__none__');
+      await onAddNote(noteText.trim(), noteProgress, recipientsToNotify);
       setNoteMessage('Note added successfully.');
       setNoteText('');
+      setSelectedRecipients([]);
     } catch (err: any) {
       setNoteError(err?.message || 'Failed to add note');
     } finally {
@@ -835,6 +908,42 @@ const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
     { label: 'Process Applied', value: metadata?.process_applied },
     { label: 'Goal Type', value: metadata?.goal_type },
   ].filter(item => item.value);
+
+  const recipientNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    availableEmployees.forEach((emp) => {
+      if (!emp?.id) return;
+      const displayName = normalizeDisplayName(emp.name) || emp.name || emp.email || emp.id;
+      map[emp.id] = displayName;
+    });
+    return map;
+  }, [availableEmployees]);
+
+  const getRecipientNames = (note: TaskNote) => {
+    const names = new Set<string>();
+    if (note.attached_to && recipientNameMap[note.attached_to]) {
+      names.add(recipientNameMap[note.attached_to]);
+    }
+    (note.attached_to_multiple || []).forEach((empId) => {
+      const name = recipientNameMap[empId];
+      if (name) {
+        names.add(name);
+      }
+    });
+    if (note.attached_to_name) {
+      names.add(note.attached_to_name);
+    }
+    if (Array.isArray(note.attached_to_multiple_names)) {
+      note.attached_to_multiple_names.forEach((val: any) => {
+        if (typeof val === 'string') {
+          names.add(val);
+        } else if (val && typeof val === 'object' && 'name' in val && val.name) {
+          names.add(val.name);
+        }
+      });
+    }
+    return Array.from(names);
+  };
 
   const statusShortcuts: Task['status'][] = ['in_progress', 'completed', 'pending'];
 
@@ -886,24 +995,39 @@ const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
     }
     return (
       <div className="notes-list">
-        {notes.map(note => (
-          <div key={note.id} className="note-card">
-            <div className="note-card-header">
-              <div>
-                <strong>{note.employee_name || 'Unknown'}</strong>
-                <span>{note.employee_role || 'Team member'}</span>
+        {notes.map(note => {
+          const recipientNames = getRecipientNames(note);
+          return (
+            <div key={note.id} className="note-card">
+              <div className="note-card-header">
+                <div>
+                  <strong>{note.employee_name || 'Unknown'}</strong>
+                  <span>{note.employee_role || 'Team member'}</span>
+                </div>
+                <span>{formatDateTime(note.created_at)}</span>
               </div>
-              <span>{formatDateTime(note.created_at)}</span>
+              <p>{note.notes}</p>
+              <div className="note-card-meta">
+                <span>Progress: {note.progress ?? 0}%</span>
+                {note.attachments_count ? (
+                  <span>📎 {note.attachments_count} attachment(s)</span>
+                ) : null}
+              </div>
+              {(recipientNames.length > 0 || note.is_attached_to_me) && (
+                <div style={{ fontSize: '12px', color: '#555', marginTop: '6px' }}>
+                  {recipientNames.length > 0 && (
+                    <span>👥 Notified: {recipientNames.join(', ')}</span>
+                  )}
+                  {note.is_attached_to_me && (
+                    <span style={{ marginLeft: recipientNames.length > 0 ? '8px' : 0, color: '#2e7d32', fontWeight: 600 }}>
+                      You were notified
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
-            <p>{note.notes}</p>
-            <div className="note-card-meta">
-              <span>Progress: {note.progress ?? 0}%</span>
-              {note.attachments_count ? (
-                <span>📎 {note.attachments_count} attachment(s)</span>
-              ) : null}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   };
@@ -1097,6 +1221,34 @@ const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
                 onChange={(e) => setNoteProgress(Number(e.target.value))}
               />
             </label>
+            <label>
+              Notify teammates (optional)
+              <select
+                multiple
+                value={selectedRecipients}
+                onChange={handleRecipientChange}
+                disabled={availableEmployeesLoading}
+                style={{ minHeight: '90px' }}
+              >
+                <option value="__none__">None</option>
+                {availableEmployees.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {normalizeDisplayName(emp.name) || emp.name || emp.email || 'Unknown'}
+                    {emp.role ? ` (${emp.role})` : ''}
+                    {emp.department ? ` · ${emp.department}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="muted-text">
+              Hold Ctrl/Cmd to select multiple teammates who should receive a notification.
+              {availableEmployeesLoading && ' Loading employees...'}
+            </p>
+            {selectedRecipients.length > 0 && (
+              <p className="muted-text">
+                Notifying: {selectedRecipients.map(id => recipientNameMap[id] || id).join(', ')}
+              </p>
+            )}
             <div className="note-form-actions">
               <Button type="submit" variant="primary" disabled={noteSubmitting}>
                 {noteSubmitting ? 'Posting…' : 'Post note'}

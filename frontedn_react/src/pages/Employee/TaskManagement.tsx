@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { taskService } from '../../services/task';
 import { useAuth } from '../../contexts/AuthContext';
-import { Task, TaskAttachment, TaskNote } from '../../types';
+import { Task } from '../../types';
 import { Button } from '../../components/Common/UI/Button';
 import { Card } from '../../components/Common/UI/Card';
 import './TaskManagement.css';
@@ -11,17 +12,12 @@ type TabType = 'tasks' | 'propose' | 'progress';
 
 const TaskManagement: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('tasks');
-  const [detailTab, setDetailTab] = useState<'details' | 'attachments' | 'notes'>('details');
-  const [taskNotes, setTaskNotes] = useState<TaskNote[]>([]);
-  const [taskAttachments, setTaskAttachments] = useState<TaskAttachment[]>([]);
-  const [notesLoading, setNotesLoading] = useState(false);
-  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [filters, setFilters] = useState({
     status: 'all' as StatusFilter,
     objective: 'all',
@@ -61,33 +57,16 @@ const TaskManagement: React.FC = () => {
     if (pendingTaskId && tasks.length > 0 && activeTab === 'tasks') {
       const task = tasks.find(t => t.id === pendingTaskId);
       if (task) {
-        // Select the task and show details
-        setSelectedTask(task);
-        setDetailTab('details');
-        
-        // Load task details (attachments and notes)
-        loadTaskAttachments(task.id);
-        loadTaskNotes(task.id);
-        
-        // Scroll to the task card if it exists
-        setTimeout(() => {
-          const taskCard = document.querySelector(`[data-task-id="${pendingTaskId}"]`);
-          if (taskCard) {
-            taskCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }, 200);
-        
-        // Clear the highlighted class after animation
-        setTimeout(() => {
-          setPendingTaskId(null);
-        }, 2000);
+        // Navigate to task detail page
+        navigate(`/employee/task-management/${pendingTaskId}`);
+        setPendingTaskId(null);
       } else {
         // Task not found, clear pending ID
         console.warn(`Task ${pendingTaskId} not found in loaded tasks`);
         setPendingTaskId(null);
       }
     }
-  }, [tasks, pendingTaskId, activeTab]);
+  }, [tasks, pendingTaskId, activeTab, navigate]);
 
   const loadTasks = async () => {
     try {
@@ -120,97 +99,46 @@ const TaskManagement: React.FC = () => {
   }, [tasks]);
 
   const filteredTasks = useMemo(() => {
-    return tasks
-      .filter(task => {
-        if (filters.status !== 'all' && task.status !== filters.status) return false;
-        if (filters.objective !== 'all' && task.objectives?.title !== filters.objective) return false;
-        return true;
-      })
-      .sort((a, b) => {
-        switch (filters.sortBy) {
-          case 'due_date':
-            return (a.due_date || '').localeCompare(b.due_date || '');
-          case 'priority':
-            const order: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
-            return (order[a.priority || 'low'] ?? 4) - (order[b.priority || 'low'] ?? 4);
-          case 'status':
-            return a.status.localeCompare(b.status);
-          default:
-            return (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || '');
-        }
-      });
+    let filtered = [...tasks];
+
+    if (filters.status !== 'all') {
+      filtered = filtered.filter(task => task.status === filters.status);
+    }
+
+    if (filters.objective !== 'all') {
+      filtered = filtered.filter(task => task.objectives?.title === filters.objective);
+    }
+
+    switch (filters.sortBy) {
+      case 'due_date':
+        filtered.sort((a, b) => {
+          const aDate = a.due_date ? new Date(a.due_date).getTime() : 0;
+          const bDate = b.due_date ? new Date(b.due_date).getTime() : 0;
+          return aDate - bDate;
+        });
+        break;
+      case 'priority':
+        const priorityOrder = { high: 3, medium: 2, low: 1 };
+        filtered.sort((a, b) => {
+          const aPriority = priorityOrder[a.priority as keyof typeof priorityOrder] || 0;
+          const bPriority = priorityOrder[b.priority as keyof typeof priorityOrder] || 0;
+          return bPriority - aPriority;
+        });
+        break;
+      case 'status':
+        filtered.sort((a, b) => a.status.localeCompare(b.status));
+        break;
+      case 'recent':
+        filtered.sort((a, b) => {
+          const aDate = a.updated_at || a.created_at || '';
+          const bDate = b.updated_at || b.created_at || '';
+          return bDate.localeCompare(aDate);
+        });
+        break;
+    }
+
+    return filtered;
   }, [tasks, filters]);
-
-  useEffect(() => {
-    if (selectedTask) {
-      loadTaskAttachments(selectedTask.id);
-      loadTaskNotes(selectedTask.id);
-    }
-  }, [selectedTask]);
-
-  const loadTaskAttachments = async (taskId: string) => {
-    try {
-      setAttachmentsLoading(true);
-      const attachments = await taskService.getTaskAttachments(taskId);
-      setTaskAttachments(attachments);
-    } catch (err) {
-      console.error('Failed to load attachments:', err);
-    } finally {
-      setAttachmentsLoading(false);
-    }
-  };
-
-  const loadTaskNotes = async (taskId: string) => {
-    try {
-      setNotesLoading(true);
-      const notes = await taskService.getTaskNotes(taskId);
-      setTaskNotes(notes);
-    } catch (err) {
-      console.error('Failed to load notes:', err);
-    } finally {
-      setNotesLoading(false);
-    }
-  };
-
-  const handleAttachmentUpload = async (file: File) => {
-    if (!selectedTask) return;
-    try {
-      const result = await taskService.uploadTaskAttachment(selectedTask.id, file);
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to upload attachment');
-      }
-      // Wait a moment for the database to update, then refresh
-      await new Promise(resolve => setTimeout(resolve, 500));
-      await loadTaskAttachments(selectedTask.id);
-    } catch (err: any) {
-      throw new Error(err?.message || 'Failed to upload attachment');
-    }
-  };
-
-  const handleAddNote = async (note: string, progress?: number) => {
-    if (!selectedTask) return;
-    try {
-      await taskService.addTaskNote(selectedTask.id, {
-        notes: note,
-        progress: progress ?? selectedTask.completion_percentage ?? 0
-      });
-      await loadTaskNotes(selectedTask.id);
-      await loadTasks(); // Refresh task list to update progress
-    } catch (err: any) {
-      throw new Error(err?.message || 'Failed to add note');
-    }
-  };
-
-  const handleStatusChange = async (status: Task['status']) => {
-    if (!selectedTask) return;
-    try {
-      await taskService.updateTaskStatus(selectedTask.id, status);
-      await loadTasks();
-      setSelectedTask(prev => prev ? { ...prev, status } : null);
-    } catch (err) {
-      console.error('Failed to update status:', err);
-    }
-  };
 
   const formatDate = (value?: string) => {
     if (!value) return 'Not set';
@@ -221,45 +149,45 @@ const TaskManagement: React.FC = () => {
 
   const renderFiltersSection = () => {
     return (
-      <div className="task-filters">
+      <div className="filters-section">
         <div className="filter-group">
-          <label>Status</label>
-          <select
-            value={filters.status}
-            onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value as StatusFilter }))}
-          >
-            <option value="all">All</option>
-            <option value="not_started">Not Started</option>
-            <option value="in_progress">In Progress</option>
-            <option value="completed">Completed</option>
-            <option value="waiting">Waiting</option>
-          </select>
-      </div>
-
-        <div className="filter-group">
-          <label>Objective</label>
-          <select
-            value={filters.objective}
-            onChange={(e) => setFilters(prev => ({ ...prev, objective: e.target.value }))}
-          >
-            <option value="all">All Objectives</option>
-            {objectives.map(obj => (
-              <option key={obj} value={obj}>{obj}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="filter-group">
-          <label>Sort By</label>
-          <select
-            value={filters.sortBy}
-            onChange={(e) => setFilters(prev => ({ ...prev, sortBy: e.target.value as any }))}
-          >
-            <option value="due_date">Due Date</option>
-            <option value="priority">Priority</option>
-            <option value="status">Status</option>
-            <option value="recent">Recently Updated</option>
-          </select>
+          <label>
+            Status
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value as StatusFilter }))}
+            >
+              <option value="all">All</option>
+              <option value="not_started">Not Started</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+              <option value="waiting">Waiting</option>
+            </select>
+          </label>
+          <label>
+            Objective
+            <select
+              value={filters.objective}
+              onChange={(e) => setFilters(prev => ({ ...prev, objective: e.target.value }))}
+            >
+              <option value="all">All Objectives</option>
+              {objectives.map(obj => (
+                <option key={obj} value={obj}>{obj}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Sort By
+            <select
+              value={filters.sortBy}
+              onChange={(e) => setFilters(prev => ({ ...prev, sortBy: e.target.value as any }))}
+            >
+              <option value="due_date">Due Date</option>
+              <option value="priority">Priority</option>
+              <option value="status">Status</option>
+              <option value="recent">Recent</option>
+            </select>
+          </label>
         </div>
       </div>
     );
@@ -298,7 +226,7 @@ const TaskManagement: React.FC = () => {
             <article
               key={task.id}
               data-task-id={task.id}
-              className={`task-card ${selectedTask?.id === task.id ? 'active' : ''} ${pendingTaskId === task.id ? 'highlighted' : ''}`}
+              className={`task-card ${pendingTaskId === task.id ? 'highlighted' : ''}`}
               onClick={() => handleSelectTask(task)}
             >
               <div className="task-card-header">
@@ -336,30 +264,6 @@ const TaskManagement: React.FC = () => {
                 <span>Created: {formatDate(task.created_at)}</span>
                 <span>Assigned: {formatDate(task.assigned_at)}</span>
               </div>
-
-              {selectedTask?.id === task.id && (
-                <div
-                  className="task-card-detail"
-                  onClick={(evt) => evt.stopPropagation()}
-                >
-                  <TaskDetailPanel
-                    task={task}
-                    activeTab={detailTab}
-                    onTabChange={setDetailTab}
-                    attachments={taskAttachments}
-                    notes={taskNotes}
-                    attachmentsLoading={attachmentsLoading}
-                    notesLoading={notesLoading}
-                    onUploadAttachment={handleAttachmentUpload}
-                    onAddNote={handleAddNote}
-                    onRefreshAttachments={() => loadTaskAttachments(task.id)}
-                    onRefreshNotes={() => loadTaskNotes(task.id)}
-                    onStatusChange={handleStatusChange}
-                    onTaskUpdated={loadTasks}
-                    variant="inline"
-                  />
-                </div>
-              )}
             </article>
           );
         })}
@@ -368,13 +272,8 @@ const TaskManagement: React.FC = () => {
   };
 
   const handleSelectTask = (task: Task) => {
-    if (selectedTask?.id === task.id) {
-      setSelectedTask(null);
-      setDetailTab('details');
-    } else {
-      setSelectedTask(task);
-      setDetailTab('details');
-    }
+    // Navigate to task detail page
+    navigate(`/employee/task-management/${task.id}`);
   };
 
   const renderProgressTab = () => {
@@ -604,348 +503,6 @@ const TaskManagement: React.FC = () => {
       {activeTab === 'propose' && renderProposeTaskTab()}
 
       {activeTab === 'progress' && renderProgressTab()}
-    </div>
-  );
-};
-
-// TaskDetailPanel component (similar to admin version but employee-focused)
-interface TaskDetailPanelProps {
-  task: Task;
-  activeTab: 'details' | 'attachments' | 'notes';
-  onTabChange: (tab: 'details' | 'attachments' | 'notes') => void;
-  attachments: TaskAttachment[];
-  notes: TaskNote[];
-  attachmentsLoading: boolean;
-  notesLoading: boolean;
-  onUploadAttachment: (file: File) => Promise<void>;
-  onAddNote: (note: string, progress?: number) => Promise<void>;
-  onRefreshAttachments: () => void;
-  onRefreshNotes: () => void;
-  onStatusChange: (status: Task['status']) => void;
-  onTaskUpdated?: () => void;
-  variant?: 'inline' | 'sidebar';
-}
-
-const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({
-  task,
-  activeTab,
-  onTabChange,
-  attachments,
-  notes,
-  attachmentsLoading,
-  notesLoading,
-  onUploadAttachment,
-  onAddNote,
-  onRefreshAttachments,
-  onRefreshNotes,
-  onStatusChange,
-  onTaskUpdated,
-  variant = 'sidebar',
-}) => {
-  const [noteText, setNoteText] = useState('');
-  const [noteProgress, setNoteProgress] = useState(task.completion_percentage ?? 0);
-  const [noteSubmitting, setNoteSubmitting] = useState(false);
-  const [noteError, setNoteError] = useState('');
-  const [noteMessage, setNoteMessage] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-  const [uploadMessage, setUploadMessage] = useState('');
-
-  useEffect(() => {
-    setNoteText('');
-    setNoteProgress(task.completion_percentage ?? 0);
-    setNoteSubmitting(false);
-    setNoteError('');
-    setNoteMessage('');
-    setSelectedFile(null);
-    setUploading(false);
-    setUploadError('');
-    setUploadMessage('');
-  }, [task.id]);
-
-  const handleAttachmentSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!selectedFile) {
-      setUploadError('Please choose a file to upload');
-      return;
-    }
-    try {
-      setUploading(true);
-      setUploadError('');
-      await onUploadAttachment(selectedFile);
-      setUploadMessage('Attachment uploaded successfully.');
-      setSelectedFile(null);
-    } catch (err: any) {
-      setUploadError(err?.message || 'Failed to upload attachment');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleNoteSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!noteText.trim()) {
-      setNoteError('Note content is required');
-      return;
-    }
-    try {
-      setNoteSubmitting(true);
-      setNoteError('');
-      await onAddNote(noteText, noteProgress);
-      setNoteMessage('Note added successfully.');
-      setNoteText('');
-    } catch (err: any) {
-      setNoteError(err?.message || 'Failed to add note');
-    } finally {
-      setNoteSubmitting(false);
-    }
-  };
-
-  const formatDate = (value?: string) => {
-    if (!value) return 'Not set';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value.slice(0, 10);
-    return date.toLocaleDateString();
-  };
-
-  const metadata = task.strategic_metadata;
-  const metadataFields = [
-    { label: '🎯 Context', value: metadata?.context },
-    { label: '🎯 Objective', value: metadata?.objective },
-    { label: '🔄 Process', value: metadata?.process },
-    { label: '📦 Delivery', value: metadata?.delivery },
-    { label: '📊 Reporting Requirements', value: metadata?.reporting_requirements },
-  ].filter(item => item.value);
-
-  const statusShortcuts: Task['status'][] = ['in_progress', 'completed', 'waiting'];
-
-  const renderAttachments = () => {
-    if (attachmentsLoading) {
-      return <div className="inline-loading">Loading attachments…</div>;
-    }
-    if (!attachments.length) {
-      return <p className="muted-text">No attachments uploaded yet.</p>;
-    }
-    return (
-      <ul className="attachment-list">
-        {attachments.map((attachment, idx) => (
-          <li key={`${attachment.update_id}-${idx}`} className="attachment-item">
-            <div>
-              <strong>{attachment.filename || 'Attachment'}</strong>
-              <p>{attachment.file_type || 'File'}</p>
-            </div>
-            <div>
-              <p className="label">Uploaded</p>
-              <span>{formatDate(attachment.created_at)}</span>
-            </div>
-            {attachment.public_url && (
-              <a
-                href={attachment.public_url}
-                target="_blank"
-                rel="noreferrer"
-                className="link-button"
-              >
-                Open
-              </a>
-            )}
-          </li>
-        ))}
-      </ul>
-    );
-  };
-
-  const renderNotes = () => {
-    if (notesLoading) {
-      return <div className="inline-loading">Loading notes…</div>;
-    }
-    if (!notes.length) {
-      return <p className="muted-text">No notes yet. Add the first update below.</p>;
-    }
-    return (
-      <div className="notes-list">
-        {notes.map(note => (
-          <div key={note.id} className="note-card">
-            <div className="note-card-header">
-              <div>
-                <strong>{note.employee_name || 'Unknown'}</strong>
-                <span>{note.employee_role || 'Team member'}</span>
-              </div>
-              <span>{formatDate(note.created_at)}</span>
-            </div>
-            <p>{note.notes}</p>
-            <div className="note-card-meta">
-              <span>Progress: {note.progress ?? 0}%</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const panelClass = ['task-detail-panel', variant === 'inline' ? 'inline' : '']
-    .filter(Boolean)
-    .join(' ');
-
-  return (
-    <div className={panelClass}>
-      <div className="detail-tabs">
-        {(['details', 'attachments', 'notes'] as const).map(tab => (
-              <button 
-            key={tab}
-            className={`detail-tab ${activeTab === tab ? 'active' : ''}`}
-            onClick={() => onTabChange(tab)}
-              >
-            {tab === 'details' && 'Details'}
-            {tab === 'attachments' && '📎 Task Update'}
-            {tab === 'notes' && 'Notes'}
-              </button>
-        ))}
-            </div>
-            
-      {activeTab === 'details' && (
-              <div className="detail-section">
-          <div className="detail-overview-grid">
-            <div>
-              <p className="label">Priority</p>
-              <span className={`priority-badge ${task.priority || 'low'}`}>
-                {(task.priority || 'low').toUpperCase()}
-                  </span>
-                </div>
-            <div>
-              <p className="label">Due date</p>
-              <strong>{formatDate(task.due_date)}</strong>
-                </div>
-            <div>
-              <p className="label">Strategic Objective</p>
-              <strong>{task.strategic_objective || task.objectives?.title || '—'}</strong>
-                </div>
-            <div>
-              <p className="label">Pre Number</p>
-              <strong>{task.pre_number || task.objectives?.pre_number || '—'}</strong>
-                </div>
-            <div>
-              <p className="label">Progress</p>
-              <strong>{task.completion_percentage ?? 0}%</strong>
-                </div>
-            <div>
-              <p className="label">Assignee</p>
-              <strong>
-                {task.employees?.name ||
-                  (typeof task.assigned_to === 'string' ? task.assigned_to : 'Unassigned')}
-              </strong>
-                </div>
-              </div>
-
-          <div className="detail-objective-card">
-            <p className="label">Description</p>
-            <p>{task.task_description || task.description || 'No description provided.'}</p>
-          </div>
-
-          {metadataFields.length > 0 && (
-            <div className="strategic-analysis-card">
-              <h4>AI Strategic Analysis</h4>
-              <div className="strategic-meta">
-                {metadataFields.map(field => (
-                  <div key={field.label}>
-                    <p className="label">{field.label}</p>
-                    <p>{field.value}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="detail-actions">
-            {statusShortcuts.map(status => (
-              <Button
-                key={status}
-                variant={task.status === status ? 'success' : 'secondary'}
-                size="small"
-                onClick={() => onStatusChange(status)}
-                disabled={task.status === status}
-              >
-                {status.replace('_', ' ')}
-              </Button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'attachments' && (
-        <div className="detail-section">
-          <div className="section-header">
-            <div>
-              <h4>Attachments</h4>
-              <p className="muted-text">Files shared for this task.</p>
-            </div>
-            <Button variant="ghost" size="small" onClick={onRefreshAttachments}>
-              Refresh
-            </Button>
-          </div>
-
-          {renderAttachments()}
-
-          <form className="attachment-upload" onSubmit={handleAttachmentSubmit}>
-            <label>
-              Upload new file
-              <input
-                type="file"
-                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-              />
-            </label>
-            <Button type="submit" variant="primary" disabled={uploading}>
-              {uploading ? 'Uploading…' : 'Upload'}
-            </Button>
-          </form>
-          {uploadError && <p className="error-text">{uploadError}</p>}
-          {uploadMessage && <p className="success-text">{uploadMessage}</p>}
-        </div>
-      )}
-
-      {activeTab === 'notes' && (
-        <div className="detail-section">
-          <div className="section-header">
-            <div>
-              <h4>Notes & Updates</h4>
-              <p className="muted-text">Track conversations and progress updates.</p>
-            </div>
-            <Button variant="ghost" size="small" onClick={onRefreshNotes}>
-              Refresh
-            </Button>
-          </div>
-
-          {renderNotes()}
-
-          <form className="note-form" onSubmit={handleNoteSubmit}>
-            <label>
-              Add note
-              <textarea
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                placeholder="Summarize updates, blockers, or decisions..."
-              />
-            </label>
-            <label className="range-label">
-              Progress ({noteProgress}%)
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={noteProgress}
-                onChange={(e) => setNoteProgress(Number(e.target.value))}
-              />
-            </label>
-            <div className="note-form-actions">
-              <Button type="submit" variant="primary" disabled={noteSubmitting}>
-                {noteSubmitting ? 'Posting…' : 'Post note'}
-              </Button>
-              {noteError && <p className="error-text">{noteError}</p>}
-              {noteMessage && <p className="success-text">{noteMessage}</p>}
-            </div>
-          </form>
-        </div>
-      )}
     </div>
   );
 };

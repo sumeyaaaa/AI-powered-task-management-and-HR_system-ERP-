@@ -20,6 +20,15 @@ def create_app():
     except Exception as e:
         print(f"❌ Failed to register employee routes: {e}")
     
+    # Root route
+    @app.route('/', methods=['GET'])
+    def root():
+        return jsonify({
+            'status': 'healthy',
+            'service': 'ERP Backend API',
+            'message': 'API is running. Use /api/health for health checks.'
+        })
+    
     # Health check
     @app.route('/api/health', methods=['GET'])
     def health_check():

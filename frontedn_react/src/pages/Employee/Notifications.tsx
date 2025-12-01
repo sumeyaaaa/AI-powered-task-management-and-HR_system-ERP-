@@ -25,12 +25,18 @@ const Notifications: React.FC = () => {
     loadNotifications();
   }, [loadNotifications]);
 
+  const canRespondToNotification = (notification: Notification) =>
+    Boolean(notification.meta?.specially_attached && (notification.meta?.is_note_notification || notification.meta?.is_attachment_notification) && !notification.meta?.is_task_owner_confirmation);
+  
+  const isTaskOwnerConfirmation = (notification: Notification) =>
+    Boolean(notification.meta?.is_task_owner_confirmation);
+
   const handleNotificationClick = (notification: Notification) => {
     if (!notification.is_read) {
       markAsRead(notification.id);
     }
     
-    if (notification.meta?.task_id) {
+    if (notification.meta?.task_id && !canRespondToNotification(notification)) {
       navigateToTask(notification.meta.task_id);
       // Navigate to employee task management page
       navigate('/employee/task-management');
@@ -39,6 +45,22 @@ const Notifications: React.FC = () => {
     }
     
     setSelectedNotification(notification);
+  };
+
+  const openResponsePortal = (notification: Notification) => {
+    if (!notification.meta?.task_id) return;
+    if (!notification.is_read) {
+      markAsRead(notification.id);
+    }
+    navigate(`/employee/respond/${notification.meta.task_id}`, {
+      state: {
+        taskDescription: notification.meta?.task_description,
+        notePreview: notification.meta?.note_preview,
+        message: notification.message,
+        notificationId: notification.id,
+        added_by: notification.meta?.added_by,
+      },
+    });
   };
 
   const handleMarkAllAsRead = async () => {
@@ -171,15 +193,40 @@ const Notifications: React.FC = () => {
                       {getRelativeTime(notification.created_at)}
                     </span>
                     {notification.meta?.task_id && (
-                      <Button
-                        variant="ghost"
-                        size="small"
-                        onClick={() => {
-                          handleNotificationClick(notification);
-                        }}
-                      >
-                        View Task →
-                      </Button>
+                      canRespondToNotification(notification) ? (
+                        <Button
+                          variant="primary"
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openResponsePortal(notification);
+                          }}
+                        >
+                          Respond →
+                        </Button>
+                      ) : isTaskOwnerConfirmation(notification) ? (
+                        <Button
+                          variant="primary"
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNotificationClick(notification);
+                          }}
+                        >
+                          Go to Task →
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNotificationClick(notification);
+                          }}
+                        >
+                          View Task →
+                        </Button>
+                      )
                     )}
                   </div>
                 </div>

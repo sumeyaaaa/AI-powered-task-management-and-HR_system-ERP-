@@ -86,6 +86,7 @@ export interface StrategicMetadata {
   process_applied?: string;
   goal_type?: string;
   predefined_process?: boolean;  // 🎯 Flag for predefined processes
+  assignment_strategy?: string;
 }
 
 export interface Task {

@@ -16,6 +16,11 @@ export interface Notification {
       type?: string;
       user_role?: string;
       timestamp?: string;
+      specially_attached?: boolean;
+      is_note_notification?: boolean;
+      is_attachment_notification?: boolean;
+      is_task_owner_confirmation?: boolean;
+      objective_number?: string;
     };
     created_at: string;
     read_at?: string;

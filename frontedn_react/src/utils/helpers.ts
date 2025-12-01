@@ -122,7 +122,22 @@ export const safeStrip = (value: string | null | undefined): string => {
       .join('')
       .substring(0, 2);
   };
-  
+
+  // Format objective number for display (e.g., 1 -> "OBJ-001")
+  export const formatObjectiveNumber = (preNumber: string | number | null | undefined): string => {
+    if (preNumber === null || preNumber === undefined) {
+      return '—';
+    }
+    if (typeof preNumber === 'number') {
+      return `OBJ-${String(preNumber).padStart(3, '0')}`;
+    }
+    // If it's already a string like "OBJ-001", return as is
+    if (typeof preNumber === 'string' && preNumber.startsWith('OBJ-')) {
+      return preNumber;
+    }
+    return String(preNumber);
+  };
+
   // Export as a module
   export default {
     safeStrip,
@@ -137,5 +152,6 @@ export const safeStrip = (value: string | null | undefined): string => {
     debounce,
     formatFileSize,
     isEmpty,
-    getInitials
+    getInitials,
+    formatObjectiveNumber
   };
