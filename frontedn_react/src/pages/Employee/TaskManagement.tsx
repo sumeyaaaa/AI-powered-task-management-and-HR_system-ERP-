@@ -490,7 +490,7 @@ const TaskManagement: React.FC = () => {
       } as any);
 
       if (result.success) {
-        setProposeSuccess('✅ Task proposal submitted! Waiting for admin approval.');
+        setProposeSuccess('Task created!');
         setProposeFormData({
           task_description: '',
           detailed_description: '',

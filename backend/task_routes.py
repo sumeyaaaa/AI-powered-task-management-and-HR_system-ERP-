@@ -902,32 +902,44 @@ def update_task_strategic_details(task_id, strategic_analysis):
  
 # ========== UPDATED STANDARD ORDER-TO-DELIVERY PROCESS ==========
 def get_next_objective_number():
-    """Get the next objective number by finding the highest pre_number and incrementing"""
+    """Get the next objective number by finding the highest pre_number and incrementing.
+
+    NOTE:
+    - The `pre_number` column in the `objectives` table is an INTEGER in the database.
+    - This function therefore MUST return an `int`, not a formatted string like "OBJ-001",
+      otherwise Postgres will raise `22P02: invalid input syntax for type integer`.
+    - Frontend display formatting (e.g. "OBJ-001") is handled separately in the React app.
+    """
     try:
         supabase = get_supabase_client()
         
-        # Get the highest pre_number from objectives
+        # Get the highest pre_number from objectives (stored as INTEGER in DB)
         result = supabase.table("objectives").select("pre_number").order("pre_number", desc=True).limit(1).execute()
         
         if result.data and result.data[0].get('pre_number'):
             highest_number = result.data[0]['pre_number']
-            # Extract number from format like "OBJ-001" or just use the number
-            if isinstance(highest_number, str) and highest_number.startswith('OBJ-'):
-                try:
-                    current_num = int(highest_number.split('-')[1])
-                    return f"OBJ-{current_num + 1:03d}"
-                except:
-                    return f"OBJ-001"
-            else:
-                # If it's already a number, increment it
-                return highest_number + 1
+            # Defensive handling in case old data was stored as a string like "OBJ-001"
+            try:
+                if isinstance(highest_number, str):
+                    if highest_number.startswith('OBJ-'):
+                        current_num = int(highest_number.split('-')[1])
+                    else:
+                        current_num = int(highest_number)
+                else:
+                    # If it's already a number, use it directly
+                    current_num = int(highest_number)
+                return current_num + 1
+            except Exception:
+                # Fallback if parsing fails for some unexpected legacy value
+                return 1
         else:
             # First objective
-            return "OBJ-001"
+            return 1
             
     except Exception as e:
         print(f"❌ Error getting next objective number: {e}")
-        return "OBJ-001"
+        # Safe fallback for DB errors
+        return 1
 
 @task_bp.route('/api/tasks/goals/classify-only', methods=['POST'])
 @token_required
@@ -2194,9 +2206,13 @@ def get_goal_tasks(goal_id):
         print(f"❌ Error getting goal tasks: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-def get_general_tasks_objective_id():
-    """Return the ID for the General Tasks objective"""
-    return "6fa01185-8218-4c8c-b3c9-a66311dfe53f"
+def get_or_create_general_tasks_objective_id():
+    """
+    Deprecated: previously used to force every task to belong to a
+    "General Tasks" objective. We now allow tasks to exist without an
+    objective at all, so callers should NOT rely on this.
+    """
+    return None
 
 @task_bp.route('/api/tasks', methods=['POST'])
 @token_required
@@ -2215,10 +2231,6 @@ def create_task():
         # Validate and sanitize UUID fields
         objective_id = safe_uuid(data.get('objective_id'))
         
-        # If no objective_id provided, use the General Tasks objective
-        if not objective_id:
-            objective_id = get_general_tasks_objective_id()  # Use your existing General Tasks objective
-        
         assigned_to = safe_uuid(data.get('assigned_to'))
         
         # Handle multiple assignees if provided
@@ -2231,9 +2243,9 @@ def create_task():
         if not task_description:
             return jsonify({'success': False, 'error': 'Task description is required'}), 400
         
+        # Build base task payload; we will only set objective_id if one is provided.
         task_data = {
             "task_description": task_description,
-            "objective_id": objective_id,
             "assigned_to": assigned_to,
             "assigned_to_multiple": assigned_to_multiple,
             "priority": data.get('priority', 'medium'),
@@ -2243,6 +2255,10 @@ def create_task():
             "completion_percentage": data.get('completion_percentage', 0),
             "notes": data.get('notes', '')
         }
+
+        # If the client provided a valid objective_id, attach it; otherwise leave it NULL
+        if objective_id:
+            task_data["objective_id"] = objective_id
         
         # If employee is creating, it's a proposal
         if user_role == 'employee':
