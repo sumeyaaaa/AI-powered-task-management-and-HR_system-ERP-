@@ -65,7 +65,7 @@ def get_order_to_delivery_process():
             "deliverable": "Kenya border clearance documents"
         },
         "8. ETHIOPIAN CUSTOMS CLEARANCE (2 days)": {
-            "responsible": "Ethiopian Operation Specialist",
+            "responsible": "Ethiopia Operation Specialist (Senior)",
             "activities": "Handle Ethiopian customs clearance, process 1st payment based on permit value",
             "deliverable": "Ethiopian customs clearance certificate"
         },
@@ -75,12 +75,12 @@ def get_order_to_delivery_process():
             "deliverable": "Final tax payment confirmation"
         },
         "10. PRODUCT LOADING & DISPATCH (0.5 day)": {
-            "responsible": "Ethiopian Operation Specialist",
+            "responsible": "Ethiopia Operation Specialist (Senior)",
             "activities": "Supervise product loading, coordinate dispatch to final destination", 
             "deliverable": "Dispatch confirmation"
         },
         "11. TRANSPORT MONITORING (2 days)": {
-            "responsible": "Ethiopian Operation Specialist",
+            "responsible": "Ethiopia Operation Specialist (Senior)",
             "activities": "Track truck movement, coordinate with transport provider",
             "deliverable": "Regular transport status updates"
         },
@@ -90,7 +90,7 @@ def get_order_to_delivery_process():
             "deliverable": "Customer delivery confirmation and signed receipt"
         },
         "13. POST-DELIVERY DOCUMENTATION & SETTLEMENT (1 day)": {
-            "responsible": "Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+            "responsible": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
             "activities": "Complete all financial settlements, document archiving, lesson learned",
             "deliverable": "Closed order file and settlement confirmation"
         }
@@ -139,7 +139,7 @@ def get_stock_to_delivery_process():
             "deliverable": "Kenya border clearance documents"
         },
         "8. ETHIOPIAN CUSTOMS CLEARANCE (2 days)": {
-            "responsible": "Kenyan operation specialist",
+            "responsible": "Ethiopia Operation Specialist (Senior)",
             "activities": "Ethiopian customs branch will do the clearing and process 1st payment based on permit value",
             "deliverable": "Ethiopian customs clearance"
         },
