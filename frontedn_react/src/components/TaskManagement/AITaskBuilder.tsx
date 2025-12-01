@@ -6,7 +6,7 @@ import { Button } from '../Common/UI/Button';
 import { GeneratedTaskCard } from './GeneratedTaskCard';
 import './AITaskBuilder.css';
 
-type TemplateKey = 'auto' | 'order_to_delivery' | 'stock_to_delivery' | 'employee_onboarding';
+type TemplateKey = 'auto' | 'order_to_delivery' | 'stock_to_delivery';
 
 interface EditableTask extends Partial<Task> {
   isNew?: boolean;
@@ -31,10 +31,6 @@ const PROCESS_TEMPLATES: Record<
   stock_to_delivery: {
     label: 'Stock to Delivery (13-step process)',
     description: 'Use the predefined stock-to-delivery process with recommended owners.',
-  },
-  employee_onboarding: {
-    label: 'Employee Onboarding (8-step process)',
-    description: 'Use the predefined employee onboarding process with recommended owners.',
   },
 };
 
@@ -131,11 +127,6 @@ export const AITaskBuilder: React.FC<AITaskBuilderProps> = ({ onTasksGenerated }
         payload.description = `${payload.description || ''}\n\nThis goal should follow the Stock to Delivery process.`;
       }
       
-      if (formData.template === 'employee_onboarding' && !payload.title.toLowerCase().includes('employee onboarding')) {
-        payload.title = `Employee Onboarding - ${payload.title}`;
-        payload.description = `${payload.description || ''}\n\nThis goal should follow the Employee Onboarding process.`;
-      }
-
       const result = await taskService.generateTasksFromGoal(payload);
       if (!result.success) {
         throw new Error(result.message || 'Unable to generate tasks');
