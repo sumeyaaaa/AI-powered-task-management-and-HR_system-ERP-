@@ -8,7 +8,7 @@ To add a new predefined process:
 """
 
 def get_predefined_processes_registry():
-    """]
+    """
     Returns registry of all predefined processes.
     Each process is a dictionary with step keys and step data.
     
@@ -18,7 +18,6 @@ def get_predefined_processes_registry():
     return {
         'order_to_delivery': get_order_to_delivery_process(),
         'stock_to_delivery': get_stock_to_delivery_process(),
-        'employee_onboarding': get_employee_onboarding_process(),
         # Add more predefined processes here:
         # 'new_process_name': get_new_process_function(),
     }
@@ -165,66 +164,3 @@ def get_stock_to_delivery_process():
             "deliverable": "Warehouse delivery confirmation"
         }
     }
-
-def get_employee_onboarding_process():
-    """
-    Returns the Employee Onboarding 8-step process.
-    This is the exact process that will be used - no tasks added or removed.
-    Only descriptions will be customized for specific objectives.
-    """
-    return {
-        "1. PRE-ONBOARDING PREPARATION (1 day)": {
-            "responsible": "HR Manager",
-            "activities": "Prepare welcome package, set up workstation, create email account, prepare access cards and badges",
-            "deliverable": "Workstation ready and access credentials prepared"
-        },
-        "2. FIRST DAY WELCOME & ORIENTATION (1 day)": {
-            "responsible": "HR Manager",
-            "activities": "Welcome meeting, company introduction, tour of facilities, introduction to team members",
-            "deliverable": "Employee oriented and introduced to team"
-        },
-        "3. DOCUMENTATION & COMPLIANCE (1 day)": {
-            "responsible": "HR Specialist",
-            "activities": "Complete employment contract, tax forms, insurance enrollment, policy acknowledgments",
-            "deliverable": "All legal and compliance documents signed"
-        },
-        "4. IT SETUP & SYSTEM ACCESS (0.5 day)": {
-            "responsible": "IT Support Specialist",
-            "activities": "Configure laptop/computer, install required software, set up system accounts, provide login credentials",
-            "deliverable": "IT systems configured and accessible"
-        },
-        "5. ROLE-SPECIFIC TRAINING (3 days)": {
-            "responsible": "Department Manager",
-            "activities": "Job-specific training, process documentation review, shadow experienced team member, initial task assignment",
-            "deliverable": "Employee trained on role responsibilities"
-        },
-        "6. COMPANY POLICIES & CULTURE (1 day)": {
-            "responsible": "HR Manager",
-            "activities": "Review employee handbook, code of conduct, safety procedures, company values and culture",
-            "deliverable": "Employee understands company policies"
-        },
-        "7. MENTOR ASSIGNMENT & BUDDY SYSTEM (0.5 day)": {
-            "responsible": "Department Manager",
-            "activities": "Assign mentor/buddy, schedule regular check-ins, set up support channels",
-            "deliverable": "Mentor assigned and support structure established"
-        },
-        "8. 30-DAY CHECK-IN & FEEDBACK (1 day)": {
-            "responsible": "HR Manager",
-            "activities": "Conduct 30-day review meeting, gather feedback, address concerns, adjust onboarding plan if needed",
-            "deliverable": "Onboarding feedback collected and action plan updated"
-        }
-    }
-
-# Example: How to add a new predefined process
-# def get_new_process_template():
-#     """Returns a new predefined process template"""
-#     return {
-#         "Step 1": {
-#             "responsible": "Role Name",
-#             "activities": "What needs to be done",
-#             "deliverable": "Expected output"
-#         },
-#         # ... more steps
-#     }
-# Then add to PREDEFINED_PROCESSES: 'new_process_name': get_new_process_template()
-
