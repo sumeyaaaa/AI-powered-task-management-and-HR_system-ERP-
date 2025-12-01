@@ -133,6 +133,31 @@ def create_app():
 app = create_app()
 
 if __name__ == '__main__':
-    print("🚀 Starting Unified ERP Backend Server")
-    app.run(host='0.0.0.0', port=10000, debug=False)
-    #app.run(host='127.0.0.1', port=5000, debug=True)
+    import sys
+    
+    # Check if running in production mode (Gunicorn sets this)
+    is_production = os.getenv('FLASK_ENV') == 'production' or os.getenv('GUNICORN_WORKERS') is not None
+    
+    if is_production:
+        print("🚀 Production mode: Use Gunicorn to run this app")
+        print("   Run: gunicorn --config gunicorn_config.py app:app")
+        sys.exit(1)
+    
+    # Development mode - suppress Flask warning
+    import warnings
+    import logging
+    # Suppress Werkzeug development server warning
+    logging.getLogger('werkzeug').setLevel(logging.ERROR)
+    warnings.filterwarnings('ignore', category=UserWarning, module='werkzeug')
+    
+    print("🚀 Starting Unified ERP Backend Server (Development Mode)")
+    print("📝 Note: Development server warning is suppressed - this is fine for local testing")
+    print("⚠️  For production, use: python run_production.py")
+    print("-" * 60)
+    
+    # Use environment variable for port, default to 5000 for local dev
+    port = int(os.getenv('PORT', 5000))
+    debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+    
+    # Run with use_reloader=False to avoid some warnings, but keep debug features
+    app.run(host='127.0.0.1', port=port, debug=debug, use_reloader=debug)
