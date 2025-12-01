@@ -184,6 +184,8 @@ def create_enhanced_task_notification(task_id, notification_type, message, assig
 
         # 2. NOTES & MESSAGES (Separate notification) - FIXED TO INCLUDE ATTACHED EMPLOYEES
         elif notification_type == "note_added":
+            # Track who originally attached the current employee (for response notifications)
+            attached_by_employee_id = None
             if current_user_role in ['admin', 'superadmin']:
                 # Admin adds note: Notify all assigned employees + attached employees (excluding admin)
                 recipients.update(assigned_employees)
@@ -195,36 +197,145 @@ def create_enhanced_task_notification(task_id, notification_type, message, assig
                 # - Notify all admin users
                 # - Notify all task assignees (task owner)
                 # - Notify attached employees
-                # - Also notify the last person who updated the task (often the original owner)
+                # - CRITICAL: Find who originally attached this employee and notify them
+                print(f"📝 Employee {current_user_employee_id} adding note to task {task_id}")
+                print(f"👥 Admin IDs: {admin_employee_ids}")
+                print(f"👥 Assigned employees: {assigned_employees}")
+                print(f"👥 Attached employees: {attached_employees}")
+                
                 recipients.update(admin_employee_ids)
                 recipients.update(assigned_employees)
                 recipients.update(attached_employees)
+                
+                print(f"🎯 Recipients after initial update: {recipients}")
 
                 try:
-                    # Find the most recent updater on this task (could be the owner who attached the collaborator)
-                    last_update = supabase.table("task_updates").select("updated_by").eq("task_id", task_id).order("created_at", desc=True).limit(1).execute()
-                    if last_update.data:
-                        last_updater_id = last_update.data[0].get("updated_by")
-                        if last_updater_id and last_updater_id != current_user_employee_id:
-                            recipients.add(last_updater_id)
-                            print(f"🧭 Also notifying last task updater: {last_updater_id}")
+                    # Find the note where THIS employee was attached (the one that triggered their ability to respond)
+                    employee_id_str = str(current_user_employee_id)
+                    print(f"🔍 Looking for who attached employee {employee_id_str} in task {task_id}")
+                    
+                    # Query all notes for this task (including the one just created)
+                    all_updates = supabase.table("task_updates") \
+                        .select("id, updated_by, attached_to, attached_to_multiple, created_at") \
+                        .eq("task_id", task_id) \
+                        .order("created_at", desc=True) \
+                        .execute()
+                    
+                    print(f"🔍 Found {len(all_updates.data) if all_updates.data else 0} total updates for this task")
+                    
+                    if all_updates.data:
+                        # Find the most recent note where this employee was attached
+                        for idx, update in enumerate(all_updates.data):
+                            update_creator = update.get('updated_by')
+                            
+                            # Skip the current update (the response itself)
+                            if update_creator == current_user_employee_id:
+                                print(f"⏭️  Skipping update {idx} - created by current user")
+                                continue
+                            
+                            # Check if this employee was attached in this note
+                            update_attached_to = update.get('attached_to')
+                            update_attached_multiple = update.get('attached_to_multiple') or []
+                            
+                            print(f"🔍 Checking update {idx}: creator={update_creator}, attached_to={update_attached_to}, attached_to_multiple={update_attached_multiple}")
+                            
+                            was_attached_here = False
+                            
+                            # Check attached_to
+                            if update_attached_to:
+                                if str(update_attached_to) == employee_id_str:
+                                    was_attached_here = True
+                                    print(f"✅ Found match in attached_to: {update_attached_to}")
+                            
+                            # Check attached_to_multiple
+                            if not was_attached_here and isinstance(update_attached_multiple, list):
+                                attached_multiple_str = [str(id) for id in update_attached_multiple]
+                                if employee_id_str in attached_multiple_str:
+                                    was_attached_here = True
+                                    print(f"✅ Found match in attached_to_multiple: {attached_multiple_str}")
+                            
+                            # If this employee was attached in this note, notify the person who created it
+                            if was_attached_here:
+                                note_creator_id = update.get('updated_by')
+                                if note_creator_id and note_creator_id != current_user_employee_id:
+                                    recipients.add(note_creator_id)
+                                    attached_by_employee_id = note_creator_id
+                                    print(f"🧭 ✅ FOUND! Employee {current_user_employee_id} was attached by {note_creator_id} - adding to recipients")
+                                    print(f"🎯 Recipients before: {recipients}")
+                                    break  # Only notify the most recent one who attached them
+                        else:
+                            print(f"⚠️ No note found where employee {current_user_employee_id} was attached")
+                    else:
+                        print(f"⚠️ No updates found for task {task_id}")
+                                    
                 except Exception as e:
-                    print(f"⚠️ Failed to fetch last task updater for notifications: {e}")
+                    print(f"⚠️ Failed to find who attached this employee for notifications: {e}")
+                    import traceback
+                    traceback.print_exc()
+                
+                print(f"🎯 Final recipients after lookup: {recipients}")
 
-                print("📝 Employee added note - notifying admins, task assignees, attached employees AND last updater")
+                print("📝 Employee added note - notifying admins, task assignees, attached employees AND the person who attached them")
             
             # Remove current user from recipients (no self-notifications)
+            print(f"🎯 Recipients BEFORE removing current user: {recipients}")
             if current_user_employee_id and current_user_employee_id in recipients:
                 recipients.remove(current_user_employee_id)
-                
-            # Create note notification
+                print(f"🗑️  Removed current user {current_user_employee_id} from recipients")
+            
+            print(f"🎯 Final recipients AFTER removing current user: {recipients}")
+            print(f"🎯 Recipients count: {len(recipients)}")
+            
+            # Create note notifications
             if recipients:
-                note_message = f"📝 Note added to task: {task['task_description'][:50]}..."
-                create_single_notification(
-                    supabase, task_id, "note_added", note_message, recipients,
-                    task, current_user_name, current_user_role, note_preview,
-                    attached_to, attached_to_multiple, is_note=True
-                )
+                # Default message for general note notifications
+                default_note_message = f"📝 Note added to task: {task['task_description'][:50]}..."
+
+                # If we know exactly who attached this employee, send them a special \"response\" notification
+                owner_recipients = set()
+                if attached_by_employee_id and attached_by_employee_id in recipients:
+                    owner_recipients.add(attached_by_employee_id)
+                
+                # 1) Special notification for the person who attached this employee
+                if owner_recipients:
+                    owner_message = f"💬 You got a response to your note on task: {task['task_description'][:50]}..."
+                    print(f"📨 Sending owner response notification to: {owner_recipients}")
+                    create_single_notification(
+                        supabase,
+                        task_id,
+                        "note_added",
+                        owner_message,
+                        owner_recipients,
+                        task,
+                        current_user_name,
+                        current_user_role,
+                        note_preview,
+                        attached_to,
+                        attached_to_multiple,
+                        is_note=True,
+                        is_task_owner_confirmation=True
+                    )
+                    # Remove owners from general recipients
+                    recipients = recipients - owner_recipients
+
+                # 2) General note notification for everyone else
+                if recipients:
+                    print(f"📨 Sending general note notification to: {recipients}")
+                    create_single_notification(
+                        supabase,
+                        task_id,
+                        "note_added",
+                        default_note_message,
+                        recipients,
+                        task,
+                        current_user_name,
+                        current_user_role,
+                        note_preview,
+                        attached_to,
+                        attached_to_multiple,
+                        is_note=True,
+                        is_task_owner_confirmation=False
+                    )
             return
 
         # 3. FILE UPLOADS & ATTACHMENTS
@@ -333,8 +444,23 @@ def get_admin_employees():
     print(f"🔧 Admin employees found: {len(admin_employees)}")
     return admin_employees
 
-def create_single_notification(supabase, task_id, notification_type, message, recipients, task, current_user_name, current_user_role, note_preview, attached_to, attached_to_multiple, is_note=False, assigned_by=None):
-    """Helper function to create a single notification"""
+def create_single_notification(
+    supabase,
+    task_id,
+    notification_type,
+    message,
+    recipients,
+    task,
+    current_user_name,
+    current_user_role,
+    note_preview,
+    attached_to,
+    attached_to_multiple,
+    is_note=False,
+    assigned_by=None,
+    is_task_owner_confirmation=False
+):
+    """Helper function to create notifications for one or more recipients"""
     for recipient in recipients:
         if recipient:  # Ensure recipient is not None
             # DEDUPLICATION: Check for recent duplicate notification (last 2 minutes)
@@ -364,7 +490,8 @@ def create_single_notification(supabase, task_id, notification_type, message, re
                     "attached_to_multiple": attached_to_multiple,
                     "timestamp": datetime.utcnow().isoformat(),
                     "is_note_notification": is_note,
-                    "is_attachment_notification": not is_note and notification_type == "file_uploaded"
+                    "is_attachment_notification": not is_note and notification_type == "file_uploaded",
+                    "is_task_owner_confirmation": is_task_owner_confirmation
                 },
                 "priority": "normal",
                 "created_at": datetime.utcnow().isoformat(),

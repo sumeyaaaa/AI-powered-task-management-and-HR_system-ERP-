@@ -26,6 +26,11 @@ const Notifications: React.FC = () => {
   }, [loadNotifications]);
 
   const canRespondToNotification = (notification: Notification) => {
+    // Do NOT offer "Respond" button for owner-confirmation notifications
+    if (notification.meta?.is_task_owner_confirmation) {
+      return false;
+    }
+
     // Allow responding to any note_added or file_uploaded notification
     // This allows attached employees to respond even if task is not in their list
     const notificationType = notification.type || notification.meta?.type || '';
@@ -41,21 +46,7 @@ const Notifications: React.FC = () => {
         notification.message.toLowerCase().includes('attachment')
       ));
     
-    const canRespond = Boolean(notification.meta?.task_id && isNoteOrAttachment);
-    
-    // Debug logging (remove in production)
-    if (notification.meta?.task_id && !canRespond) {
-      console.log('Notification not respondable:', {
-        type: notification.type,
-        metaType: notification.meta?.type,
-        message: notification.message,
-        isNoteNotif: notification.meta?.is_note_notification,
-        isAttachmentNotif: notification.meta?.is_attachment_notification,
-        taskId: notification.meta?.task_id
-      });
-    }
-    
-    return canRespond;
+    return Boolean(notification.meta?.task_id && isNoteOrAttachment);
   };
   
   const isTaskOwnerConfirmation = (notification: Notification) =>

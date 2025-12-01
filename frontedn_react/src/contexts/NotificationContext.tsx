@@ -66,6 +66,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
             specially_attached: notif.meta?.specially_attached,
             is_note_notification: notif.meta?.is_note_notification,
             is_attachment_notification: notif.meta?.is_attachment_notification,
+            is_task_owner_confirmation: notif.meta?.is_task_owner_confirmation,
             type: notif.meta?.type || notif.type,
           },
           created_at: notif.created_at,
