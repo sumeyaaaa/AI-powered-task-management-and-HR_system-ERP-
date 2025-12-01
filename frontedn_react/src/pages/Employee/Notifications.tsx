@@ -25,8 +25,38 @@ const Notifications: React.FC = () => {
     loadNotifications();
   }, [loadNotifications]);
 
-  const canRespondToNotification = (notification: Notification) =>
-    Boolean(notification.meta?.specially_attached && (notification.meta?.is_note_notification || notification.meta?.is_attachment_notification) && !notification.meta?.is_task_owner_confirmation);
+  const canRespondToNotification = (notification: Notification) => {
+    // Allow responding to any note_added or file_uploaded notification
+    // This allows attached employees to respond even if task is not in their list
+    const notificationType = notification.type || notification.meta?.type || '';
+    const isNoteOrAttachment = 
+      notificationType === 'note_added' || 
+      notificationType === 'file_uploaded' ||
+      notification.meta?.is_note_notification ||
+      notification.meta?.is_attachment_notification ||
+      // Also check message content as fallback
+      (notification.message && (
+        notification.message.toLowerCase().includes('note') ||
+        notification.message.toLowerCase().includes('file') ||
+        notification.message.toLowerCase().includes('attachment')
+      ));
+    
+    const canRespond = Boolean(notification.meta?.task_id && isNoteOrAttachment);
+    
+    // Debug logging (remove in production)
+    if (notification.meta?.task_id && !canRespond) {
+      console.log('Notification not respondable:', {
+        type: notification.type,
+        metaType: notification.meta?.type,
+        message: notification.message,
+        isNoteNotif: notification.meta?.is_note_notification,
+        isAttachmentNotif: notification.meta?.is_attachment_notification,
+        taskId: notification.meta?.task_id
+      });
+    }
+    
+    return canRespond;
+  };
   
   const isTaskOwnerConfirmation = (notification: Notification) =>
     Boolean(notification.meta?.is_task_owner_confirmation);
@@ -36,6 +66,13 @@ const Notifications: React.FC = () => {
       markAsRead(notification.id);
     }
     
+    // If it's a respondable notification, go to response portal instead
+    if (canRespondToNotification(notification) && notification.meta?.task_id) {
+      openResponsePortal(notification);
+      return;
+    }
+    
+    // For other notifications, try to navigate to task (but may not be in their list)
     if (notification.meta?.task_id && !canRespondToNotification(notification)) {
       navigateToTask(notification.meta.task_id);
       // Navigate to employee task management page

@@ -51,7 +51,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
         const mappedNotifications: Notification[] = response.notifications.map((notif: any) => ({
           id: notif.id,
           message: notif.message || 'No message',
-          type: notif.meta?.type || 'info',
+          type: notif.meta?.type || notif.type || 'info',
           is_read: notif.is_read || false,
           meta: {
             task_id: notif.meta?.task_id,
@@ -63,6 +63,10 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
             attached_specifically: notif.meta?.specially_attached,
             attached_to: notif.meta?.attached_to,
             attached_to_multiple: notif.meta?.attached_to_multiple,
+            specially_attached: notif.meta?.specially_attached,
+            is_note_notification: notif.meta?.is_note_notification,
+            is_attachment_notification: notif.meta?.is_attachment_notification,
+            type: notif.meta?.type || notif.type,
           },
           created_at: notif.created_at,
           read_at: notif.read_at,

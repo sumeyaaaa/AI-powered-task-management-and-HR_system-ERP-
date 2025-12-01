@@ -187,14 +187,31 @@ def create_enhanced_task_notification(task_id, notification_type, message, assig
             if current_user_role in ['admin', 'superadmin']:
                 # Admin adds note: Notify all assigned employees + attached employees (excluding admin)
                 recipients.update(assigned_employees)
-                recipients.update(attached_employees)  # ADDED: Include attached employees
+                recipients.update(attached_employees)  # Include attached employees
                 print("📝 Admin added note - notifying assigned employees AND attached employees")
                 
             elif current_user_role == 'employee':
-                # Employee adds note: Notify all admin users + attached employees (excluding employee)
+                # Employee adds note (includes response via the Respond button):
+                # - Notify all admin users
+                # - Notify all task assignees (task owner)
+                # - Notify attached employees
+                # - Also notify the last person who updated the task (often the original owner)
                 recipients.update(admin_employee_ids)
-                recipients.update(attached_employees)  # ADDED: Include attached employees
-                print("📝 Employee added note - notifying admins AND attached employees")
+                recipients.update(assigned_employees)
+                recipients.update(attached_employees)
+
+                try:
+                    # Find the most recent updater on this task (could be the owner who attached the collaborator)
+                    last_update = supabase.table("task_updates").select("updated_by").eq("task_id", task_id).order("created_at", desc=True).limit(1).execute()
+                    if last_update.data:
+                        last_updater_id = last_update.data[0].get("updated_by")
+                        if last_updater_id and last_updater_id != current_user_employee_id:
+                            recipients.add(last_updater_id)
+                            print(f"🧭 Also notifying last task updater: {last_updater_id}")
+                except Exception as e:
+                    print(f"⚠️ Failed to fetch last task updater for notifications: {e}")
+
+                print("📝 Employee added note - notifying admins, task assignees, attached employees AND last updater")
             
             # Remove current user from recipients (no self-notifications)
             if current_user_employee_id and current_user_employee_id in recipients:

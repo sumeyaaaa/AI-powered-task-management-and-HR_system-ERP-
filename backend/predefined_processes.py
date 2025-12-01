@@ -99,74 +99,69 @@ def get_order_to_delivery_process():
 
 def get_stock_to_delivery_process():
     """
-    Returns the Stock-to-Delivery 13-step process.
+    Returns the Stock-to-Delivery 12-step process.
     This is the exact process that will be used - no tasks added or removed.
     Only descriptions will be customized for specific objectives.
     """
     return {
-        "1. REACH OUT TO SUPPLIERS IN KENYA AND LOCK STOCK AVAILABILITY (2 days)": {
-            "responsible": "Supply Chain Specialist",
-            "activities": "Contact Kenya suppliers and reserve inventory",
-            "deliverable": "Stock availability confirmation"
+        "1. INFORMATION REQUIRED (1 day)": {
+            "responsible": "Account Executive",
+            "activities": "List out information that is required to kick off order-to-delivery process following order confirmed by sales team and product management team",
+            "deliverable": "Required information list"
         },
-        "2. GET CONFIRMATIONS FROM KENYA SUPPLIER ON STOCK AVAILABILITY AND BRAND (1 day)": {
-            "responsible": "Supply Chain Specialist", 
-            "activities": "Verify stock availability and obtain written confirmation",
-            "deliverable": "Supplier stock confirmation"
-        },
-        "3. GET CONFIRMATION FOR PRODUCT MANAGEMENT TEAM ON THE ACCEPTANCE OF THE PRODUCT (0.5 day)": {
+        "2. SUPPLIER ENGAGEMENT & ORDER CONFIRMATION (3.5 days)": {
             "responsible": "Supply Chain Specialist",
-            "activities": "Validate product specifications meet quality standards",
+            "activities": "Reach out to suppliers in Kenya, lock stock availability, get confirmations on stock and brand, confirm order and request Proforma invoice and deal price",
+            "deliverable": "Supplier order confirmation and Proforma invoice"
+        },
+        "3. PRODUCT MANAGEMENT APPROVAL (0.5 day)": {
+            "responsible": "Product Development Manager",
+            "activities": "Get confirmation from Product Management team on the acceptance of the product",
             "deliverable": "Product acceptance confirmation"
         },
-        "4. CONFIRM ORDER TO KENYA SUPPLIER AND REQUEST FOR PROFORMA AND DEAL PRICE (0.5 day)": {
-            "responsible": "Supply Chain Specialist",
-            "activities": "Formal order placement and request proforma invoice",
-            "deliverable": "Proforma invoice and final pricing"
-        },
-        "5. APPLY PERMIT FOR FOREIGN CURRENCY APPROVAL FROM THE APPROPRIATE BANK AND GET PERMIT (5 days)": {
+        "4. FOREIGN CURRENCY PERMIT APPLICATION (5 days)": {
             "responsible": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
-            "activities": "Apply for foreign currency approval from bank",
+            "activities": "Apply permit for foreign currency approval from the appropriate Bank and obtain permit",
             "deliverable": "Bank permit for foreign currency"
         },
-        "6. MAKE PAYMENT FOR SUPPLIER AND REQUEST TO START DOCUMENTATION FOR EXPORT (5 days)": {
+        "5. SUPPLIER PAYMENT PROCESSING (5 days)": {
             "responsible": "Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
-            "activities": "Process payment to supplier and request export documentation",
+            "activities": "Make payment for supplier and request to start documentation for export",
             "deliverable": "Payment confirmation"
         },
-        "7. LOOK FOR THE APPROPRIATE TRUCK AND PROVIDE FOR SUPPLIER TO BE USED FOR EXPORT DOCUMENTATION (1 day)": {
-            "responsible": "Kenyan operation specialist", 
-            "activities": "Identify appropriate truck and coordinate with supplier",
+        "6. TRANSPORTATION LOGISTICS ARRANGEMENT (1 day)": {
+            "responsible": "Kenyan operation specialist",
+            "activities": "Look for the appropriate truck and provide details to supplier to be used for export documentation",
             "deliverable": "Transport arrangement confirmation"
         },
-        "8. PRODUCT WILL BE DISPATCHED AT KENYA MOYALE SIDE AND BE CLEARED FROM KENYAN SIDE (2 days)": {
+        "7. KENYA SIDE DISPATCH & CLEARANCE (2 days)": {
             "responsible": "Kenyan operation specialist",
-            "activities": "Coordinate product dispatch and Kenyan customs clearance",
+            "activities": "Product will be dispatched at Kenya Moyale side and be cleared from Kenyan side",
             "deliverable": "Kenya border clearance documents"
         },
-        "9. ETHIOPIAN CUSTOMS BRANCH WILL DO THE CLEARING PAY 1ST PAYMENT BASED ON PERMIT VALUE (2 days)": {
+        "8. ETHIOPIAN CUSTOMS CLEARANCE (2 days)": {
             "responsible": "Kenyan operation specialist",
-            "activities": "Handle Ethiopian customs clearance and process 1st payment",
+            "activities": "Ethiopian customs branch will do the clearing and process 1st payment based on permit value",
             "deliverable": "Ethiopian customs clearance"
         },
-        "10. TAX REASSESSMENT AND 2ND TAX (0.5 day)": {
+        "9. TAX REASSESSMENT & FINAL PAYMENT (0.5 day)": {
             "responsible": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
-            "activities": "Complete tax reassessment and process 2nd tax payment",
+            "activities": "Tax reassessment and 2nd tax payment",
             "deliverable": "Final tax payment confirmation"
         },
-        "11. PRODUCTS WILL BE LOADED AND DISPATCHED (0.5 day)": {
+        "10. PRODUCT LOADING & DISPATCH (0.5 day)": {
             "responsible": "Ethiopia Operation Specialist (Senior)",
-            "activities": "Supervise product loading and coordinate dispatch", 
+            "activities": "Products will be loaded and dispatched",
             "deliverable": "Dispatch confirmation"
         },
-        "12. FOLLOW TRUCKS ON THE WAY TO ETHIOPIA (2 days)": {
+        "11. TRANSPORT MONITORING (2 days)": {
             "responsible": "Ethiopia Operation Specialist (Senior)",
-            "activities": "Track truck movement and coordinate with transport provider",
+            "activities": "Follow trucks on the way to Ethiopia",
             "deliverable": "Transport status updates"
         },
-        "13. DELIVER TO WAREHOUSE (1 day)": {
+        "12. FINAL DELIVERY TO WAREHOUSE (1 day)": {
             "responsible": "Tax Accounting & Admin Specialist (Ethiopia-Focused)",
-            "activities": "Coordinate final delivery to warehouse",
+            "activities": "Deliver products to warehouse",
             "deliverable": "Warehouse delivery confirmation"
         }
     }

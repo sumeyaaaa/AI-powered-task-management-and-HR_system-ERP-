@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Employee } from '../../types';
 import { employeeService } from '../../services/employee';
 import { Button } from '../Common/UI/Button';
+import { useAuth } from '../../contexts/AuthContext';
 import './EmployeeEditForm.css';
 
 interface EmployeeEditFormProps {
@@ -34,6 +35,13 @@ export const EmployeeEditForm: React.FC<EmployeeEditFormProps> = ({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+  const [resetPasswordResult, setResetPasswordResult] = useState<{
+    success: boolean;
+    default_passwords?: string[];
+    error?: string;
+  } | null>(null);
+  const { userRole } = useAuth();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -69,17 +77,29 @@ export const EmployeeEditForm: React.FC<EmployeeEditFormProps> = ({
   };
 
   const handleResetPassword = async () => {
-    if (window.confirm('Are you sure you want to reset this employee\'s password?')) {
+    if (!window.confirm('Are you sure you want to reset this employee\'s password? The employee will need to use the default password to login.')) {
+      return;
+    }
+
+    setResetPasswordLoading(true);
+    setResetPasswordResult(null);
+    setError('');
+
       try {
         const result = await employeeService.resetEmployeePassword(employee.id);
-        if (result.success) {
-          alert('Password reset successfully!');
-        } else {
-          alert(`Failed to reset password: ${result.error}`);
-        }
-      } catch (err) {
-        alert('An error occurred while resetting password');
+      setResetPasswordResult(result);
+      
+      if (!result.success) {
+        setError(result.error || 'Failed to reset password');
       }
+    } catch (err) {
+      setResetPasswordResult({
+        success: false,
+        error: 'An error occurred while resetting password'
+      });
+      setError('An error occurred while resetting password');
+    } finally {
+      setResetPasswordLoading(false);
     }
   };
 
@@ -285,13 +305,68 @@ export const EmployeeEditForm: React.FC<EmployeeEditFormProps> = ({
         </div>
       </form>
 
+      {(userRole === 'superadmin' || userRole === 'admin') && (
       <div className="password-section">
         <h3>🔐 Password Management</h3>
         <p>Reset employee password to default (Admin only)</p>
-        <Button variant="secondary" onClick={handleResetPassword}>
-          🔄 Reset Password
+          
+          {resetPasswordResult?.success && resetPasswordResult.default_passwords && (
+            <div className="password-reset-success">
+              <h4>✅ Password Reset Successful!</h4>
+              <div className="password-info-box">
+                <p><strong>New Login Credentials:</strong></p>
+                <div className="password-credentials">
+                  <div className="credential-item">
+                    <span className="credential-label">Employee ID:</span>
+                    <code className="credential-value">{resetPasswordResult.default_passwords[0]}</code>
+                    <button
+                      className="copy-button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(resetPasswordResult.default_passwords![0]);
+                        alert('Copied to clipboard!');
+                      }}
+                      title="Copy to clipboard"
+                    >
+                      📋
+                    </button>
+                  </div>
+                  <div className="credential-item">
+                    <span className="credential-label">Or use default:</span>
+                    <code className="credential-value">{resetPasswordResult.default_passwords[1]}</code>
+                    <button
+                      className="copy-button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(resetPasswordResult.default_passwords![1]);
+                        alert('Copied to clipboard!');
+                      }}
+                      title="Copy to clipboard"
+                    >
+                      📋
+                    </button>
+                  </div>
+                </div>
+                <p className="password-note">
+                  <strong>Note:</strong> The employee should change their password after first login.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {resetPasswordResult && !resetPasswordResult.success && (
+            <div className="password-reset-error">
+              <p>❌ {resetPasswordResult.error || 'Failed to reset password'}</p>
+            </div>
+          )}
+
+          <Button 
+            variant="secondary" 
+            onClick={handleResetPassword}
+            disabled={resetPasswordLoading}
+          >
+            {resetPasswordLoading ? 'Resetting...' : '🔄 Reset Password'}
         </Button>
       </div>
+      )}
     </div>
   );
 };

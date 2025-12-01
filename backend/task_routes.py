@@ -2653,6 +2653,91 @@ def get_employee_tasks(employee_id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@task_bp.route('/api/tasks/collaboration', methods=['GET'])
+@token_required
+def get_collaboration_tasks():
+    """Get tasks where user is attached (mentioned in notes) but not assigned"""
+    try:
+        supabase = get_supabase_client()
+        user_employee_id = safe_get_employee_id()
+        
+        if not user_employee_id:
+            return jsonify({'success': False, 'error': 'Employee ID not found'}), 400
+        
+        employee_id_str = str(user_employee_id)
+        
+        # Get all task updates where this employee is attached
+        updates_result = supabase.table("task_updates").select("task_id, attached_to, attached_to_multiple").execute()
+        
+        # Collect unique task IDs where user is attached
+        collaboration_task_ids = set()
+        for update in (updates_result.data or []):
+            task_id = update.get('task_id')
+            if not task_id:
+                continue
+                
+            # Check if user is in attached_to
+            attached_to = update.get('attached_to')
+            if attached_to and str(attached_to) == employee_id_str:
+                collaboration_task_ids.add(task_id)
+                continue
+            
+            # Check if user is in attached_to_multiple
+            attached_multiple = update.get('attached_to_multiple') or []
+            if isinstance(attached_multiple, list):
+                attached_multiple_str = [str(id) for id in attached_multiple]
+                if employee_id_str in attached_multiple_str:
+                    collaboration_task_ids.add(task_id)
+        
+        # Also check notifications for attached employees
+        notifications_result = supabase.table("notifications").select("meta").eq("to_employee", employee_id_str).execute()
+        
+        for notification in (notifications_result.data or []):
+            meta_raw = notification.get('meta')
+            if isinstance(meta_raw, str):
+                try:
+                    import json
+                    meta = json.loads(meta_raw)
+                except:
+                    meta = {}
+            else:
+                meta = meta_raw or {}
+            
+            # Check if this notification was specifically attached
+            if meta.get('specially_attached'):
+                task_id = meta.get('task_id')
+                if task_id:
+                    collaboration_task_ids.add(task_id)
+        
+        # Get all tasks where user is assigned (to exclude them)
+        assigned_tasks_result = supabase.table("action_plans").select("id").or_(
+            f"assigned_to.eq.{employee_id_str},assigned_to_multiple.cs.{{{employee_id_str}}}"
+        ).execute()
+        
+        assigned_task_ids = {task['id'] for task in (assigned_tasks_result.data or [])}
+        
+        # Filter out tasks that are already assigned to user
+        collaboration_task_ids = collaboration_task_ids - assigned_task_ids
+        
+        if not collaboration_task_ids:
+            return jsonify({'success': True, 'tasks': []})
+        
+        # Get full task details for collaboration tasks
+        task_ids_list = list(collaboration_task_ids)
+        tasks_result = supabase.table("action_plans").select(
+            "*, employees!assigned_to(name, email, department, role), objectives(title, description, pre_number, priority)"
+        ).in_("id", task_ids_list).order("created_at", desc=True).execute()
+        
+        tasks = tasks_result.data if tasks_result.data else []
+        
+        return jsonify({'success': True, 'tasks': tasks})
+        
+    except Exception as e:
+        print(f"❌ Error getting collaboration tasks: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @task_bp.route('/api/tasks/<task_id>/updates', methods=['GET'])
 @token_required
 def get_task_updates(task_id):
@@ -2673,12 +2758,26 @@ def get_task_updates(task_id):
 @task_bp.route('/api/tasks/<task_id>/updates', methods=['POST'])
 @token_required
 def add_task_update(task_id):
-    """Add an update to a task"""
+    """Add an update to a task - allows attached users to collaborate"""
     try:
         supabase = get_supabase_client()
         data = request.get_json()
         
         user_employee_id = safe_get_employee_id()
+        user_role = g.user.get('role')
+        
+        # Get task to check permissions
+        task_result = supabase.table("action_plans").select("*").eq("id", task_id).execute()
+        if not task_result.data:
+            return jsonify({'success': False, 'error': 'Task not found'}), 404
+        
+        task = task_result.data[0]
+        
+        # Permission check - employees can add notes if assigned OR explicitly attached
+        if user_role == 'employee':
+            has_access = employee_has_collaboration_access(task_id, task, user_employee_id, supabase)
+            if not has_access:
+                return jsonify({'success': False, 'error': 'Not authorized to add notes to this task'}), 403
         
         update_data = {
             "task_id": task_id,

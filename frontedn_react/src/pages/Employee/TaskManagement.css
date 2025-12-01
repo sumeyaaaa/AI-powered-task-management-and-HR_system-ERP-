@@ -117,6 +117,36 @@
   }
 }
 
+.collaboration-tasks-section {
+  padding: 1.5rem 0;
+}
+
+.section-header {
+  margin-bottom: 1.5rem;
+}
+
+.section-header h2 {
+  margin: 0 0 0.5rem 0;
+  color: #1f2937;
+}
+
+.collaboration-task {
+  border-left: 4px solid #8b5cf6;
+  position: relative;
+}
+
+.collaboration-badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: #f3e8ff;
+  color: #7c3aed;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 .task-card-header {
     display: flex;
     justify-content: space-between;

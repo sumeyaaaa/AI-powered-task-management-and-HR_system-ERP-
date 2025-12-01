@@ -8,13 +8,15 @@ import { Card } from '../../components/Common/UI/Card';
 import './TaskManagement.css';
 
 type StatusFilter = 'all' | 'not_started' | 'in_progress' | 'completed' | 'waiting';
-type TabType = 'tasks' | 'propose' | 'progress';
+type TabType = 'tasks' | 'propose' | 'progress' | 'collaboration';
 
 const TaskManagement: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [collaborationTasks, setCollaborationTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [collaborationLoading, setCollaborationLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('tasks');
@@ -37,7 +39,9 @@ const TaskManagement: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === 'tasks') {
-    loadTasks();
+      loadTasks();
+    } else if (activeTab === 'collaboration') {
+      loadCollaborationTasks();
     }
   }, [activeTab]);
 
@@ -85,6 +89,19 @@ const TaskManagement: React.FC = () => {
       setError('Unable to load tasks. Please try again later.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadCollaborationTasks = async () => {
+    try {
+      setCollaborationLoading(true);
+      setError('');
+      const data = await taskService.getCollaborationTasks();
+      setCollaborationTasks(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError('Unable to load collaboration tasks. Please try again later.');
+    } finally {
+      setCollaborationLoading(false);
     }
   };
 
@@ -145,6 +162,87 @@ const TaskManagement: React.FC = () => {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value.slice(0, 10);
     return date.toLocaleDateString();
+  };
+
+  const renderCollaborationTab = () => {
+    if (collaborationLoading) {
+      return <div className="loading">Loading collaboration tasks...</div>;
+    }
+
+    if (error && activeTab === 'collaboration') {
+      return <div className="error">{error}</div>;
+    }
+
+    if (collaborationTasks.length === 0) {
+      return (
+        <Card className="no-tasks-card">
+          <div className="no-tasks">
+            <h3>No collaboration tasks</h3>
+            <p>You haven't been mentioned in any task notes yet. When someone mentions you in a task note, it will appear here.</p>
+          </div>
+        </Card>
+      );
+    }
+
+    return (
+      <div className="collaboration-tasks-section">
+        <div className="section-header">
+          <h2>🤝 Tasks I'm Mentioned In</h2>
+          <p className="muted-text">These are tasks where you were mentioned in notes. You can add notes and attachments to collaborate.</p>
+        </div>
+        <div className="task-cards-grid">
+          {collaborationTasks.map(task => {
+            const description = task.task_description || task.description || 'No description';
+            const objectiveTitle = task.objectives?.title || 'No Objective';
+            const assignee = task.employees?.name || 'Unassigned';
+            const progress = task.completion_percentage ?? 0;
+            const preNumber = task.pre_number || task.objectives?.pre_number || '—';
+
+            return (
+              <article
+                key={task.id}
+                data-task-id={task.id}
+                className="task-card collaboration-task"
+                onClick={() => navigate(`/employee/task-management/${task.id}`)}
+              >
+                <div className="task-card-header">
+                  <div>
+                    <p className="task-card-eyebrow">{preNumber !== '—' ? preNumber : 'Task'}</p>
+                    <h4>{description}</h4>
+                  </div>
+                  <span className={`status-pill ${task.status}`}>
+                    {task.status.replace('_', ' ')}
+                  </span>
+                </div>
+
+                <div className="task-card-meta">
+                  <div>
+                    <p className="label">Objective</p>
+                    <strong>{objectiveTitle}</strong>
+                  </div>
+                  <div>
+                    <p className="label">Assigned To</p>
+                    <strong>{assignee}</strong>
+                  </div>
+                  <div>
+                    <p className="label">Progress</p>
+                    <strong>{progress}%</strong>
+                  </div>
+                </div>
+
+                <div className="task-card-footer">
+                  <span className="priority-badge">{task.priority}</span>
+                  <span className="due-date">{formatDate(task.due_date)}</span>
+                </div>
+                <div className="collaboration-badge">
+                  🤝 You're collaborating on this task
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    );
   };
 
   const renderFiltersSection = () => {
@@ -491,7 +589,15 @@ const TaskManagement: React.FC = () => {
         >
           📈 My Progress
         </button>
+        <button
+          className={`tab ${activeTab === 'collaboration' ? 'active' : ''}`}
+          onClick={() => setActiveTab('collaboration')}
+        >
+          🤝 Collaboration Tasks
+        </button>
       </div>
+
+      {activeTab === 'collaboration' && renderCollaborationTab()}
 
       {activeTab === 'tasks' && (
         <>

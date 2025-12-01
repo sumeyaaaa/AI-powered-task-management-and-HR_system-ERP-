@@ -123,6 +123,19 @@ class TaskService {
     }
   }
 
+  async getCollaborationTasks(): Promise<Task[]> {
+    try {
+      const response = await api.get<{ success: boolean; tasks?: Task[] }>(`${this.baseUrl}/collaboration`);
+      if (response.data?.success && Array.isArray(response.data.tasks)) {
+        return response.data.tasks;
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching collaboration tasks:', error);
+      return [];
+    }
+  }
+
   async assignTask(taskId: string, assigneeId: string): Promise<{ success: boolean; error?: string }> {
     try {
       const response = await api.post(`${this.baseUrl}/${taskId}/assign`, { assignee_id: assigneeId });
