@@ -159,5 +159,9 @@ if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     
+    # On Render, bind to 0.0.0.0 (all interfaces), locally use 127.0.0.1
+    # Render sets PORT env var, so if PORT is set and not default, use 0.0.0.0
+    host = '0.0.0.0' if os.getenv('PORT') and os.getenv('PORT') != '5000' else '127.0.0.1'
+    
     # Run with use_reloader=False to avoid some warnings, but keep debug features
-    app.run(host='127.0.0.1', port=port, debug=debug, use_reloader=debug)
+    app.run(host=host, port=port, debug=debug, use_reloader=debug)
