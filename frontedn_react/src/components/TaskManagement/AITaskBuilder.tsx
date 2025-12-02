@@ -3,7 +3,7 @@ import { Task, Goal, Employee } from '../../types';
 import { taskService } from '../../services/task';
 import { employeeService } from '../../services/employee';
 import { Button } from '../Common/UI/Button';
-import { GeneratedTaskCard } from './GeneratedTaskCard';
+import GeneratedTaskCard from './GeneratedTaskCard';
 import './AITaskBuilder.css';
 
 type TemplateKey = 'auto' | 'order_to_delivery' | 'stock_to_delivery';
@@ -88,18 +88,27 @@ export const AITaskBuilder: React.FC<AITaskBuilderProps> = ({ onTasksGenerated }
     [employees]
   );
 
+  const fetchEmployees = async () => {
+    try {
+      const data = await employeeService.getAllEmployees(true);
+      const normalized = Array.isArray(data) ? data : (data as any)?.employees || [];
+      setEmployees(normalized);
+      console.log('✅ Loaded employees for assignment:', normalized.length);
+    } catch (err) {
+      console.warn('Failed to load employees for AI builder', err);
+    }
+  };
+
   useEffect(() => {
-    const fetchEmployees = async () => {
-      try {
-        const data = await employeeService.getAllEmployees(true);
-        const normalized = Array.isArray(data) ? data : (data as any)?.employees || [];
-        setEmployees(normalized);
-      } catch (err) {
-        console.warn('Failed to load employees for AI builder', err);
-      }
-    };
     fetchEmployees();
   }, []);
+
+  // Refresh employees when tasks are generated
+  useEffect(() => {
+    if (aiTasks.length > 0) {
+      fetchEmployees();
+    }
+  }, [aiTasks.length]);
 
   const handleGenerate = async () => {
     setLoading(true);
@@ -442,6 +451,23 @@ export const AITaskBuilder: React.FC<AITaskBuilderProps> = ({ onTasksGenerated }
               {saving ? 'Saving…' : 'Save All Tasks'}
             </Button>
           </div>
+
+          {aiTasks.length > 0 && (
+            <div className="generated-tasks-summary">
+              <div className="generated-tasks-summary-item">
+                <span className="number">{aiTasks.length}</span>
+                <span className="label">Total Tasks</span>
+              </div>
+              <div className="generated-tasks-summary-item">
+                <span className="number">{aiTasks.filter(t => t.assigned_to).length}</span>
+                <span className="label">Assigned</span>
+              </div>
+              <div className="generated-tasks-summary-item">
+                <span className="number">{aiTasks.filter(t => !t.assigned_to).length}</span>
+                <span className="label">Unassigned</span>
+              </div>
+            </div>
+          )}
 
           <div className="generated-tasks-list">
             {aiTasks.map((task, index) => (

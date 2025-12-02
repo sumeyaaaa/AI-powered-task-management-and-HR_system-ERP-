@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Task, Employee } from '../../types';
 import { taskService } from '../../services/task';
+import { employeeService } from '../../services/employee';
 import { Button } from '../Common/UI/Button';
 import { RAGRecommendations } from './RAGRecommendations';
 import './GeneratedTaskCard.css';
@@ -71,6 +72,14 @@ export const GeneratedTaskCard: React.FC<GeneratedTaskCardProps> = ({
   const hasAvailableRecommendations = taskHasRecommendationsFromObjective !== undefined 
     ? taskHasRecommendationsFromObjective 
     : hasRecommendations;
+  
+  // Automatically show recommendations when they become available
+  useEffect(() => {
+    if (hasAvailableRecommendations && !showRecommendations && !generatingRecommendations) {
+      setShowRecommendations(true);
+    }
+  }, [hasAvailableRecommendations, generatingRecommendations, showRecommendations]);
+  
   const objectiveTitle = task.objectives?.title || task.strategic_objective || 'No Objective';
   const assignedEmployee = employees.find(emp => emp.id === task.assigned_to);
   const sanitizeName = (value?: string | null) => {
@@ -78,8 +87,6 @@ export const GeneratedTaskCard: React.FC<GeneratedTaskCardProps> = ({
     const cleaned = value.replace(/^[^A-Za-z]*[0-9]+[\s\-\|:_]+/, '').trim();
     return cleaned || value;
   };
-
-  const assignedEmployeeName = sanitizeName(assignedEmployee?.name || task.assigned_to_name) || 'Unassigned';
   const isRoleMatchingStrategy = roleMatchingFlow || assignmentStrategy === 'role_based_predefined_process';
 
   useEffect(() => {
@@ -140,7 +147,14 @@ export const GeneratedTaskCard: React.FC<GeneratedTaskCardProps> = ({
       setRagActivity(thisTaskRAGStatus.current_activity);
     }
 
-    if (thisTaskRAGStatus.status === 'completed' || thisTaskRAGStatus.status === 'failed') {
+    if (thisTaskRAGStatus.status === 'completed') {
+      setGeneratingRecommendations(false);
+      setRagMetaId(null);
+      // Automatically show recommendations when objective-level RAG completes
+      if (thisTaskRAGStatus.has_recommendations) {
+        setShowRecommendations(true);
+      }
+    } else if (thisTaskRAGStatus.status === 'failed') {
       setGeneratingRecommendations(false);
       setRagMetaId(null);
     } else if (thisTaskRAGStatus.status === 'in_progress') {
@@ -216,6 +230,8 @@ export const GeneratedTaskCard: React.FC<GeneratedTaskCardProps> = ({
               setGeneratingRecommendations(false);
               setRagMetaId(null);
               setRagProgress(100);
+              // Automatically show recommendations when generation completes
+              setShowRecommendations(true);
               onRecommendationApplied?.();
             } else if (status === 'error' || status === 'failed') {
               setGeneratingRecommendations(false);
@@ -241,9 +257,19 @@ export const GeneratedTaskCard: React.FC<GeneratedTaskCardProps> = ({
 
   const handleApprove = async () => {
     if (task.assigned_to) {
-      await onTaskChange(task.id, 'status', 'not_started');
-      setShowApproveForm(false);
-      onRecommendationApplied?.();
+      try {
+        await taskService.updateTask(task.id, {
+          status: 'not_started',
+          assigned_to: task.assigned_to,
+          assigned_to_multiple: task.assigned_to_multiple || [task.assigned_to]
+        });
+        await onTaskChange(task.id, 'status', 'not_started');
+        setShowApproveForm(false);
+        onRecommendationApplied?.();
+      } catch (err) {
+        console.error('Failed to approve task:', err);
+        alert('Failed to approve task. Please try again.');
+      }
     }
   };
 
@@ -284,18 +310,37 @@ export const GeneratedTaskCard: React.FC<GeneratedTaskCardProps> = ({
     }
   };
 
+  const isAssigned = Boolean(task.assigned_to);
+  const assignedEmployeeName = isAssigned 
+    ? (employees.find(emp => emp.id === task.assigned_to)?.name || task.assigned_to_name || 'Unknown')
+    : null;
+
   return (
-    <div className="generated-task-card">
+    <div className={`generated-task-card ${isAssigned ? 'task-assigned' : 'task-unassigned'}`}>
       <div className="generated-task-header">
         <div className="generated-task-title-section">
-          <p className="generated-task-eyebrow">
-            {task.pre_number || `Task ${index + 1}`}
-          </p>
+          <div className="generated-task-header-top">
+            <p className="generated-task-eyebrow">
+              {task.pre_number || `Task ${index + 1}`}
+            </p>
+            {isAssigned && (
+              <span className="assigned-badge">
+                ✅ Assigned to {assignedEmployeeName}
+              </span>
+            )}
+            {!isAssigned && (
+              <span className="unassigned-badge">
+                ⚠️ Not Assigned
+              </span>
+            )}
+          </div>
           <h4>{task.task_description || task.description || 'Untitled Task'}</h4>
         </div>
-        <span className={`status-pill ${task.status || 'ai_suggested'}`}>
-          {(task.status || 'ai_suggested').replace('_', ' ')}
-        </span>
+        <div className="generated-task-header-right">
+          <span className={`status-pill ${task.status || 'ai_suggested'}`}>
+            {(task.status || 'ai_suggested').replace('_', ' ')}
+          </span>
+        </div>
       </div>
 
       <div className="generated-task-content">
@@ -307,12 +352,20 @@ export const GeneratedTaskCard: React.FC<GeneratedTaskCardProps> = ({
 
           <div className="generated-task-details-grid">
             <div className="generated-task-detail-item">
+              <p className="label">Assignment Status</p>
+              <strong>
+                {isAssigned 
+                  ? `✅ Assigned to ${assignedEmployeeName}` 
+                  : '⚠️ Not yet assigned'}
+              </strong>
+            </div>
+            <div className="generated-task-detail-item">
               <p className="label">Created</p>
               <strong>{formatDate(task.created_at)}</strong>
             </div>
             <div className="generated-task-detail-item">
-              <p className="label">Assigned</p>
-              <strong>{formatDate(task.assigned_at)}</strong>
+              <p className="label">Assigned Date</p>
+              <strong>{task.assigned_at ? formatDate(task.assigned_at) : 'Not assigned'}</strong>
             </div>
             <div className="generated-task-detail-item">
               <p className="label">Due Date</p>
@@ -413,12 +466,6 @@ export const GeneratedTaskCard: React.FC<GeneratedTaskCardProps> = ({
               <div className="generated-task-rag-buttons">
                 {hasRecommendations ? (
                   <>
-                    <Button
-                      variant="primary"
-                      onClick={() => setShowRecommendations(true)}
-                    >
-                      🔍 View Employee Recommendations
-                    </Button>
                     <Button
                       variant="secondary"
                       onClick={triggerRecommendationGeneration}
@@ -573,14 +620,6 @@ export const GeneratedTaskCard: React.FC<GeneratedTaskCardProps> = ({
                         </div>
                       )}
                     </div>
-                  ) : isObjectiveRAGComplete && hasAvailableRecommendations ? (
-                    // Objective-level RAG is complete and recommendations are available, show button to view
-                    <Button
-                      variant="primary"
-                      onClick={() => setShowRecommendations(true)}
-                    >
-                      🔍 View Employee Recommendations
-                    </Button>
                   ) : isObjectiveRAGComplete && !hasAvailableRecommendations ? (
                     // Objective-level RAG is complete but no recommendations for this task
                     <Button
@@ -714,9 +753,26 @@ export const GeneratedTaskCard: React.FC<GeneratedTaskCardProps> = ({
                 <div className="generated-task-form-actions">
                   <Button
                     variant="primary"
-                    onClick={() => {
-                      setShowEditForm(false);
-                      onRecommendationApplied?.();
+                    onClick={async () => {
+                      try {
+                        // Save all changes to backend
+                        const updateData: Partial<Task> = {
+                          task_description: task.task_description,
+                          priority: task.priority,
+                          status: task.status,
+                          due_date: task.due_date,
+                          assigned_at: task.assigned_at,
+                        };
+                        const result = await taskService.updateTask(task.id, updateData);
+                        if (!result.success) {
+                          throw new Error(result.error || 'Failed to save task');
+                        }
+                        setShowEditForm(false);
+                        onRecommendationApplied?.();
+                      } catch (err) {
+                        console.error('Failed to save task:', err);
+                        alert('Failed to save task. Please try again.');
+                      }
                     }}
                     className="action-button"
                   >

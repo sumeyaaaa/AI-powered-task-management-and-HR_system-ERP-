@@ -5,11 +5,23 @@
   background: #ffffff;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   margin-bottom: 1.5rem;
-  transition: box-shadow 0.2s ease;
+  transition: all 0.2s ease;
+  position: relative;
 }
 
 .generated-task-card:hover {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.generated-task-card.task-assigned {
+  border-left: 4px solid #10b981;
+  background: linear-gradient(to right, #f0fdf4 0%, #ffffff 3%);
+}
+
+.generated-task-card.task-unassigned {
+  border-left: 4px solid #fbbf24;
+  background: linear-gradient(to right, #fffbeb 0%, #ffffff 3%);
 }
 
 .generated-task-header {
@@ -20,6 +32,56 @@
   margin-bottom: 1rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid #e5e7eb;
+}
+
+.generated-task-header-top {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.generated-task-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.assigned-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #10b981;
+  color: #ffffff;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+  animation: pulse-green 2s ease-in-out infinite;
+}
+
+@keyframes pulse-green {
+  0%, 100% {
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+  }
+  50% {
+    box-shadow: 0 2px 12px rgba(16, 185, 129, 0.5);
+  }
+}
+
+.unassigned-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #fbbf24;
+  color: #78350f;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(251, 191, 36, 0.2);
 }
 
 .generated-task-title-section {
@@ -109,6 +171,24 @@
   padding: 1rem;
   background: #f9fafb;
   border-radius: 8px;
+}
+
+.generated-task-details-grid .generated-task-detail-item:nth-child(1) {
+  grid-column: 1 / -1;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 0.5rem;
+}
+
+.generated-task-details-grid .generated-task-detail-item:nth-child(1) .label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #374151;
+}
+
+.generated-task-details-grid .generated-task-detail-item:nth-child(1) strong {
+  font-size: 1rem;
+  color: #111827;
 }
 
 .generated-task-detail-item {
