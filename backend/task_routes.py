@@ -1263,9 +1263,14 @@ def classify_goal_to_tasks_only(goal, goal_data, ai_meta_id, template='auto'):
             print(f"🎯 PREDEFINED PROCESS: Using Order-to-Delivery template")
             return generate_predefined_process_tasks(goal, goal_data, ai_meta_id, 'order_to_delivery')
         
-        if template == 'stock_to_delivery' or template == 'stock-to-delivery':
+        elif template == 'stock_to_delivery' or template == 'stock-to-delivery':
             print(f"🎯 PREDEFINED PROCESS: Using Stock-to-Delivery template")
             return generate_predefined_process_tasks(goal, goal_data, ai_meta_id, 'stock_to_delivery')
+        
+        elif template == 'lead_to_delivery' or template == 'lead-to-delivery':
+            print(f"🎯 PREDEFINED PROCESS: Using Lead-to-Delivery template")
+            return generate_predefined_process_tasks(goal, goal_data, ai_meta_id, 'lead_to_delivery')
+        
         elif template == 'auto':
             # 🎯 AI CLASSIFICATION: Fully rely on AI for task generation
             print(f"🎯 AI CLASSIFICATION: Using full AI task generation with RAG")
@@ -3614,6 +3619,18 @@ def identify_responsible_role_from_process(task_description):
     
     # DIRECT MAPPING - Exact process step to role
     process_role_mapping = {
+        # Lead-to-Delivery Process Steps
+        "lead generation": "Account Executive",
+        "lead capture": "Account Executive",
+        "lead qualification": "Product Development Manager",
+        "needs analysis": "Product Development Manager",
+        "proposal offering": "Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+        "commercial proposal": "Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+        "negotiation": "CEO and Chief Revenue Officer",
+        "closing the deal": "Account Executive",
+        "signed agreements": "Account Executive",
+        
+        # Order-to-Delivery Process Steps
         # Step 1 - Account Executive
         "finalize deal": "Account Executive",
         "deal documentation": "Account Executive", 
@@ -3955,7 +3972,7 @@ def find_employee_by_exact_role(employees, target_role):
     else:
         return []
     
-def enhanced_role_based_employee_recommendations(task_description, employees, top_k=3, ai_meta_id=None, task_title=None):
+def enhanced_role_based_employee_recommendations(task_description, employees, top_k=3, ai_meta_id=None, task_title=None, task=None):
     """
     FULL RAG with JD Analysis - Uses AI to analyze Job Descriptions and Task requirements
     For custom AI-generated tasks, this performs deep analysis of JD content and task titles
@@ -3967,8 +3984,28 @@ def enhanced_role_based_employee_recommendations(task_description, employees, to
             task_context = f"{task_title or task_description[:50]}..." if task_title else task_description[:50]
             update_ai_progress(ai_meta_id, 25, "Analyzing Task Requirements", f"Analyzing task: {task_context}")
         
-        # STEP 1: Check if this is a predefined process task
-        responsible_role = identify_responsible_role_from_process(task_description)
+        # STEP 1: Check for recommended_role from strategic_metadata first (for predefined processes)
+        responsible_role = None
+        if task:
+            strategic_meta_raw = task.get('strategic_metadata')
+            if strategic_meta_raw:
+                if isinstance(strategic_meta_raw, str):
+                    try:
+                        strategic_meta = json.loads(strategic_meta_raw)
+                    except:
+                        strategic_meta = {}
+                elif isinstance(strategic_meta_raw, dict):
+                    strategic_meta = strategic_meta_raw
+                else:
+                    strategic_meta = {}
+                
+                responsible_role = strategic_meta.get('recommended_role') or strategic_meta.get('assigned_role')
+                if responsible_role:
+                    print(f"🎯 USING RECOMMENDED ROLE FROM METADATA: {responsible_role}")
+        
+        # STEP 2: If no recommended_role found, try to identify from process description
+        if not responsible_role:
+            responsible_role = identify_responsible_role_from_process(task_description)
         
         if responsible_role:
             print(f"🎯 PROCESS ROLE FOUND: {responsible_role}")
@@ -4371,7 +4408,7 @@ def corrected_process_employee_recommendations_for_task(task, employees, ai_meta
         recommended_role = strategic_meta.get('recommended_role') or strategic_meta.get('assigned_role')
         
         # 🎯 SIMPLE CHECK: predefined processes (order_to_delivery, stock_to_delivery) = role matching, auto = RAG
-        is_predefined_process = objective_template in ('order_to_delivery', 'order-to-delivery', 'stock_to_delivery', 'stock-to-delivery')
+        is_predefined_process = objective_template in ('order_to_delivery', 'order-to-delivery', 'stock_to_delivery', 'stock-to-delivery', 'lead_to_delivery', 'lead-to-delivery')
         
         # Debug logging
         print(f"=" * 80)
@@ -4471,7 +4508,8 @@ def corrected_process_employee_recommendations_for_task(task, employees, ai_meta
                 employees=employees,
                 top_k=3,  # 🎯 TOP 3 FOR AI-GENERATED TASKS
                 ai_meta_id=ai_meta_id,
-                task_title=task_title
+                task_title=task_title,
+                task=task  # 🎯 PASS TASK OBJECT TO CHECK RECOMMENDED_ROLE
             )
         
         print(f"✅ Recommendation function returned {len(rag_recommendations)} recommendations")
@@ -4890,7 +4928,7 @@ def generate_rag_employee_recommendations(task_id):
         recommended_role = strategic_meta.get('recommended_role') or strategic_meta.get('assigned_role')
         
         # 🎯 SIMPLE CHECK: predefined processes (order_to_delivery, stock_to_delivery) = role matching, auto = RAG
-        is_predefined_process = objective_template in ('order_to_delivery', 'order-to-delivery', 'stock_to_delivery', 'stock-to-delivery')
+        is_predefined_process = objective_template in ('order_to_delivery', 'order-to-delivery', 'stock_to_delivery', 'stock-to-delivery', 'lead_to_delivery', 'lead-to-delivery')
         
         print(f"🔍 ENDPOINT DEBUG: Task ID: {task_id}")
         print(f"🔍 ENDPOINT DEBUG: Objective template: {objective_template}")

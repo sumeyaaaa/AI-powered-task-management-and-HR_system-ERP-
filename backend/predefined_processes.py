@@ -47,7 +47,7 @@ def lead_to_delivery_process():
             "deliverable": "Customized proposal document with commercial terms"
         },
         "4. NEGOTIATION (5 days)": {
-            "responsible": "CEO and Cheff revenue officer",
+            "responsible": "CEO and Chief Revenue Officer",
             "activities": "Present customized offer to client, handle commercial negotiations, adjust terms as required, resolve client concerns",
             "deliverable": "Agreed commercial terms and conditions"
         },
