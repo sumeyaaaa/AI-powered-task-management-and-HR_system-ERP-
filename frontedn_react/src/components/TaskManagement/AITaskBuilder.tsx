@@ -6,7 +6,7 @@ import { Button } from '../Common/UI/Button';
 import GeneratedTaskCard from './GeneratedTaskCard';
 import './AITaskBuilder.css';
 
-type TemplateKey = 'auto' | 'order_to_delivery' | 'stock_to_delivery';
+type TemplateKey = 'auto' | 'order_to_delivery' | 'stock_to_delivery' | 'lead_to_delivery';
 
 interface EditableTask extends Partial<Task> {
   isNew?: boolean;
@@ -31,6 +31,10 @@ const PROCESS_TEMPLATES: Record<
   stock_to_delivery: {
     label: 'Stock to Delivery (13-step process)',
     description: 'Use the predefined stock-to-delivery process with recommended owners.',
+  },
+  lead_to_delivery: {
+    label: 'Lead to Delivery (5-step process)',
+    description: 'Use the predefined lead-to-delivery process with recommended owners.',
   },
 };
 
@@ -134,6 +138,11 @@ export const AITaskBuilder: React.FC<AITaskBuilderProps> = ({ onTasksGenerated }
       if (formData.template === 'stock_to_delivery' && !payload.title.toLowerCase().includes('stock to delivery')) {
         payload.title = `Stock to Delivery - ${payload.title}`;
         payload.description = `${payload.description || ''}\n\nThis goal should follow the Stock to Delivery process.`;
+      }
+      
+      if (formData.template === 'lead_to_delivery' && !payload.title.toLowerCase().includes('lead to delivery')) {
+        payload.title = `Lead to Delivery - ${payload.title}`;
+        payload.description = `${payload.description || ''}\n\nThis goal should follow the Lead to Delivery process.`;
       }
       
       const result = await taskService.generateTasksFromGoal(payload);

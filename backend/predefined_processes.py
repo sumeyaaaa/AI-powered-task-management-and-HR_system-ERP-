@@ -18,8 +18,44 @@ def get_predefined_processes_registry():
     return {
         'order_to_delivery': get_order_to_delivery_process(),
         'stock_to_delivery': get_stock_to_delivery_process(),
+        'lead_to_delivery': lead_to_delivery_process(),
         # Add more predefined processes here:
         # 'new_process_name': get_new_process_function(),
+    }
+
+
+def lead_to_delivery_process():
+    """
+    Returns the Lead-to-Delivery 5-step process.
+    This is the exact process that will be used - no tasks added or removed.
+    Only descriptions will be customized for specific objectives.
+    """
+    return {
+        "1. LEAD GENERATION AND CAPTURE (1 days)": {
+            "responsible": "Account Executive",
+            "activities": "Identify and attract potential clients showing interest through marketing campaigns, referrals, and outreach activities",
+            "deliverable": "List of qualified leads with contact information"
+        },
+        "2. LEAD QUALIFICATION VIA NEEDS ANALYSIS (2 days)": {
+            "responsible": "Product Development Manager",
+            "activities": "Assess client fit and intent, conduct detailed analysis of client pain points, requirements, and technical specifications",
+            "deliverable": "Documented needs analysis report and qualified lead confirmation"
+        },
+        "3. PROPOSAL OFFERING (1 days)": {
+            "responsible": "Commercial & Finance Specialist (Consolidation and Kenya-Focused)",
+            "activities": "Prepare customized commercial proposal including pricing, payment terms, delivery schedule, and product specifications",
+            "deliverable": "Customized proposal document with commercial terms"
+        },
+        "4. NEGOTIATION (5 days)": {
+            "responsible": "CEO and Cheff revenue officer",
+            "activities": "Present customized offer to client, handle commercial negotiations, adjust terms as required, resolve client concerns",
+            "deliverable": "Agreed commercial terms and conditions"
+        },
+        "5. CLOSING THE DEAL (3 days)": {
+            "responsible": "Account Executive",
+            "activities": "Secure final client commitment, obtain signed agreements, collect all required documentation, initiate order handover process",
+            "deliverable": "Signed Proforma Invoice (PI) and commercial agreement"
+        }
     }
 
 def get_order_to_delivery_process():
