@@ -180,8 +180,10 @@ class AuthManager:
     def get_or_create_admin_employee(self, supabase):
         """Get or create admin employee record and return employee ID"""
         try:
+            admin_email = self.superadmin_email or "admin@leanchem.com"
+            
             # First try to find existing admin employee
-            admin_result = supabase.table("employees").select("id").eq("email", "admin@leanchem.com").execute()
+            admin_result = supabase.table("employees").select("id").eq("email", admin_email).execute()
             
             if admin_result.data:
                 return admin_result.data[0]['id']
@@ -189,7 +191,7 @@ class AuthManager:
             # If not found, create admin employee record
             admin_employee_data = {
                 "name": "System Administrator",
-                "email": "admin@leanchem.com",
+                "email": admin_email,
                 "role": "Administrator",
                 "department": "IT",
                 "is_active": True,
