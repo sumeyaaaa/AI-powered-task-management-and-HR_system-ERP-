@@ -5,6 +5,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Task } from '../../types';
 import { Button } from '../../components/Common/UI/Button';
 import { Card } from '../../components/Common/UI/Card';
+import { SimpleMarkdownText } from '../../components/Common/UI/SimpleMarkdownText';
+import { RichTextNoteEditor } from '../../components/Common/UI/RichTextNoteEditor';
 import './TaskManagement.css';
 
 type StatusFilter = 'all' | 'not_started' | 'in_progress' | 'completed' | 'waiting';
@@ -30,6 +32,7 @@ const TaskManagement: React.FC = () => {
   const [proposeFormData, setProposeFormData] = useState({
     task_description: '',
     detailed_description: '',
+    sub_tasks: [''] as string[],
     priority: 'medium' as 'low' | 'medium' | 'high',
     due_date: '',
   });
@@ -315,10 +318,20 @@ const TaskManagement: React.FC = () => {
       <div className="task-cards-grid">
         {filteredTasks.map(task => {
           const description = task.task_description || task.description || 'No description';
+          // In the list view show ONLY the main goal (first line); hide details/checklist
+          const [firstLine] = description.split('\n');
+          const goalText = (firstLine || '').trim() || description.trim();
           const objectiveTitle = task.objectives?.title || 'No Objective';
           const assignee = task.employees?.name || 'Unassigned';
           const progress = task.completion_percentage ?? 0;
           const preNumber = task.pre_number || task.objectives?.pre_number || '—';
+
+          const employeeId = (user as any)?.employee_id as string | undefined;
+          const canEditOrDelete =
+            user?.role === 'employee' &&
+            employeeId &&
+            (task.assigned_to === employeeId ||
+              (task.assigned_to_multiple || []).includes(employeeId));
 
           return (
             <article
@@ -330,7 +343,9 @@ const TaskManagement: React.FC = () => {
               <div className="task-card-header">
                 <div>
                   <p className="task-card-eyebrow">{preNumber !== '—' ? preNumber : 'Task'}</p>
-                  <h4>{description}</h4>
+                  <h4>
+                    <SimpleMarkdownText text={goalText} />
+                  </h4>
                 </div>
                 <span className={`status-pill ${task.status}`}>
                   {task.status.replace('_', ' ')}
@@ -361,6 +376,37 @@ const TaskManagement: React.FC = () => {
               <div className="task-card-footer">
                 <span>Created: {formatDate(task.created_at)}</span>
                 <span>Assigned: {formatDate(task.assigned_at)}</span>
+                {canEditOrDelete && (
+                  <span className="task-card-actions">
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/employee/task-management/${task.id}?mode=edit`);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="text-button danger"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (window.confirm('Are you sure you want to delete this task?')) {
+                          const result = await taskService.deleteTask(task.id);
+                          if (!result.success) {
+                            alert(result.error || 'Failed to delete task');
+                          } else {
+                            loadTasks();
+                          }
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </span>
+                )}
               </div>
             </article>
           );
@@ -472,8 +518,11 @@ const TaskManagement: React.FC = () => {
 
   const handleProposeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!proposeFormData.task_description || !proposeFormData.detailed_description) {
-      setProposeError('Please fill in all required fields');
+    const hasGoal = !!proposeFormData.task_description.trim();
+    const normalizedSubTasks = (proposeFormData.sub_tasks || []).map(t => t.trim()).filter(Boolean);
+
+    if (!hasGoal || normalizedSubTasks.length === 0) {
+      setProposeError('Please add a task description and at least one checklist item');
       return;
     }
 
@@ -482,7 +531,10 @@ const TaskManagement: React.FC = () => {
       setProposeError('');
       setProposeSuccess('');
 
-      const fullDescription = `${proposeFormData.task_description} - ${proposeFormData.detailed_description}`;
+      const bulletList = normalizedSubTasks.map(t => `- ${t}`).join('\n');
+      const fullDescription =
+        `${proposeFormData.task_description.trim()}\n\nTask checklist:\n${bulletList}`;
+
       const result = await taskService.createTask({
         task_description: fullDescription,
         priority: proposeFormData.priority,
@@ -494,6 +546,7 @@ const TaskManagement: React.FC = () => {
         setProposeFormData({
           task_description: '',
           detailed_description: '',
+          sub_tasks: [''],
           priority: 'medium',
           due_date: '',
         });
@@ -516,25 +569,65 @@ const TaskManagement: React.FC = () => {
         <Card>
           <form className="propose-task-form" onSubmit={handleProposeSubmit}>
             <label>
-              Task Description*
+              Task Description* (Goal)
               <input
                 type="text"
-                placeholder="What needs to be done?"
+                placeholder="What's the main goal?"
                 value={proposeFormData.task_description}
-                onChange={(e) => setProposeFormData(prev => ({ ...prev, task_description: e.target.value }))}
+                onChange={(e) =>
+                  setProposeFormData((prev) => ({
+                    ...prev,
+                    task_description: e.target.value,
+                  }))
+                }
                 required
               />
             </label>
-            <label>
-              Detailed Description*
-              <textarea
-                placeholder="Detailed description of the task and why it's important..."
-                rows={5}
-                value={proposeFormData.detailed_description}
-                onChange={(e) => setProposeFormData(prev => ({ ...prev, detailed_description: e.target.value }))}
-                required
-              />
-            </label>
+            <div className="propose-note-field">
+              <span className="field-label">Detailed Description* (Checklist of tasks)</span>
+              {proposeFormData.sub_tasks.map((item, index) => (
+                <div key={index} className="subtask-row">
+                  <input
+                    type="text"
+                    placeholder={`Task item ${index + 1}`}
+                    value={item}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setProposeFormData((prev) => {
+                        const next = [...prev.sub_tasks];
+                        next[index] = value;
+                        return { ...prev, sub_tasks: next };
+                      });
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="subtask-remove"
+                    onClick={() =>
+                      setProposeFormData((prev) => {
+                        const next = prev.sub_tasks.filter((_, i) => i !== index);
+                        return { ...prev, sub_tasks: next.length ? next : [''] };
+                      })
+                    }
+                    aria-label="Remove task item"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="subtask-add"
+                onClick={() =>
+                  setProposeFormData((prev) => ({
+                    ...prev,
+                    sub_tasks: [...prev.sub_tasks, ''],
+                  }))
+                }
+              >
+                + Add task
+              </button>
+            </div>
             <div className="form-row">
               <label>
                 Suggested Priority

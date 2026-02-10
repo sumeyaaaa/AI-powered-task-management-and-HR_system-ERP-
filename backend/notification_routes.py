@@ -875,9 +875,12 @@ def admin_test_notifications():
     try:
         supabase = get_supabase_client()
         
-        # Manually set admin user context
+        # Manually set admin user context, using configured SUPERADMIN_EMAIL
+        admin_email = os.getenv('SUPERADMIN_EMAIL')
+        if not admin_email:
+            raise Exception("SUPERADMIN_EMAIL is not configured in environment")
         g.user = {
-            'email': 'admin@leanchem.com',
+            'email': admin_email,
             'role': 'superadmin', 
             'employee_id': '6562d78f-de15-41ae-b88a-faf808c32a2a'
         }

@@ -646,7 +646,10 @@ def get_admin_employee_id():
     """Get admin employee ID for notifications"""
     try:
         supabase = get_supabase_client()
-        admin_result = supabase.table("employees").select("id").eq("email", "admin@leanchem.com").execute()
+        admin_email = os.getenv('SUPERADMIN_EMAIL')
+        if not admin_email:
+            raise Exception("SUPERADMIN_EMAIL is not configured in environment")
+        admin_result = supabase.table("employees").select("id").eq("email", admin_email).execute()
         if admin_result.data:
             return admin_result.data[0]['id']
         return None
@@ -2298,6 +2301,46 @@ def create_task():
         print(f"❌ Error creating task: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@task_bp.route('/api/tasks/<task_id>', methods=['DELETE'])
+@token_required
+def delete_task(task_id):
+    """Delete a task.
+    
+    - Employees can delete only tasks that are assigned to them.
+    - Admin / superadmin can delete any task.
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        user_role = g.user.get('role') if hasattr(g, 'user') and g.user else None
+        user_employee_id = safe_get_employee_id()
+        
+        task_result = supabase.table("action_plans").select("*").eq("id", task_id).execute()
+        if not task_result.data:
+            return jsonify({'success': False, 'error': 'Task not found'}), 404
+        
+        current_task = task_result.data[0]
+        
+        # Permission checks
+        if user_role == 'employee':
+            # Employees can only delete their own tasks
+            if (current_task.get('assigned_to') != user_employee_id and 
+                user_employee_id not in (current_task.get('assigned_to_multiple') or [])):
+                return jsonify({'success': False, 'error': 'Not authorized to delete this task'}), 403
+        
+        # Admin / superadmin can delete any task
+        delete_result = supabase.table("action_plans").delete().eq("id", task_id).execute()
+        
+        if delete_result.data is None:
+            # Supabase python client returns data=None for deletes; treat as success
+            return jsonify({'success': True})
+        
+        return jsonify({'success': True})
+    
+    except Exception as e:
+        print(f"❌ Error deleting task {task_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @task_bp.route('/api/tasks/<task_id>', methods=['PUT'])
 @token_required
 def update_task(task_id):
@@ -2324,8 +2367,13 @@ def update_task(task_id):
                 user_employee_id not in (current_task.get('assigned_to_multiple') or [])):
                 return jsonify({'success': False, 'error': 'Not authorized to update this task'}), 403
             
-            # Employees can only update progress and notes
-            allowed_fields = ['completion_percentage', 'notes', 'status']
+            # Base fields employees can always update on their tasks
+            allowed_fields = ['completion_percentage', 'notes', 'status', 'task_description']
+            
+            # If the employee is the primary assignee, allow them to tweak basic planning fields too
+            if current_task.get('assigned_to') == user_employee_id:
+                allowed_fields.extend(['priority', 'due_date'])
+            
             update_data = {k: v for k, v in data.items() if k in allowed_fields}
             
             # Auto-update status based on progress

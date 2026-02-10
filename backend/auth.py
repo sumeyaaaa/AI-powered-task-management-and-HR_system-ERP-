@@ -180,7 +180,9 @@ class AuthManager:
     def get_or_create_admin_employee(self, supabase):
         """Get or create admin employee record and return employee ID"""
         try:
-            admin_email = self.superadmin_email or "admin@leanchem.com"
+            admin_email = self.superadmin_email
+            if not admin_email:
+                raise Exception("SUPERADMIN_EMAIL is not configured in environment")
             
             # First try to find existing admin employee
             admin_result = supabase.table("employees").select("id").eq("email", admin_email).execute()

@@ -4,6 +4,8 @@
   flex-direction: column;
   gap: 1.5rem;
   padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 .tabs {
@@ -31,8 +33,9 @@
 
 .tab.active {
   color: #111827;
-  background: #eef2ff;
+  background: #ffffff;
   border-bottom: 2px solid #4f46e5;
+  box-shadow: 0 1px 0 0 #4f46e5 inset;
 }
 
 /* Filters */
@@ -79,15 +82,15 @@
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 16px;
-  padding: 1.5rem;
+  padding: 1.25rem 1.5rem;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
   }
   
   .task-card:hover {
     transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
 }
 
 .task-card.active {
@@ -201,7 +204,7 @@
 
 .task-card-meta {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 2fr 1fr 1fr 1fr;
   gap: 1rem;
   margin-bottom: 1rem;
 }
@@ -212,6 +215,12 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 0.25rem;
+}
+
+.task-card-checklist {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: #4b5563;
 }
 
 .task-card-meta strong {
@@ -255,6 +264,28 @@
   color: #6b7280;
   padding-top: 1rem;
   border-top: 1px solid #e5e7eb;
+}
+
+.task-card-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.text-button {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 0.8rem;
+  color: #2563eb;
+  cursor: pointer;
+}
+
+.text-button.danger {
+  color: #dc2626;
+}
+
+.text-button:hover {
+  text-decoration: underline;
 }
 
 .task-card-detail {
@@ -634,6 +665,122 @@
 .propose-task-form textarea {
   resize: vertical;
   min-height: 120px;
+}
+
+.propose-note-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.propose-note-field .field-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1f2933;
+}
+
+.rich-note-editor {
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rich-note-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.rich-note-btn {
+  border: 1px solid #d0d7de;
+  background: #f9fafb;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.rich-note-btn.secondary {
+  background: #fff5f5;
+}
+
+.rich-note-btn:hover {
+  background: #e5f0ff;
+}
+
+.rich-note-textarea {
+  border: none;
+  resize: vertical;
+  min-height: 140px;
+  font-size: 0.9rem;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.rich-note-textarea:focus {
+  outline: none;
+}
+
+.rich-note-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.rich-note-preview {
+  border-top: 1px dashed #e5e7eb;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+}
+
+.rich-note-preview-body {
+  font-size: 0.9rem;
+  color: #111827;
+}
+
+.rich-note-preview .placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.rich-note-list {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+
+.subtask-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.subtask-row input {
+  flex: 1;
+}
+
+.subtask-add,
+.subtask-remove {
+  border: none;
+  background: #eef2ff;
+  color: #4f46e5;
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.subtask-remove {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.subtask-add:hover,
+.subtask-remove:hover {
+  opacity: 0.9;
 }
 
 .form-row {

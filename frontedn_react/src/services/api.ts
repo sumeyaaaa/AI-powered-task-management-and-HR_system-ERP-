@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { config } from '../utils/constants';
 
-// For local development, always use localhost:5000
+// For local development, always use backend on port 5000
 // Override any deployment URLs when running on localhost:3000
 const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const API_BASE_URL = isLocalDev ? 'http://127.0.0.1:5000' : (process.env.REACT_APP_BACKEND_URL || 'http://127.0.0.1:5000');

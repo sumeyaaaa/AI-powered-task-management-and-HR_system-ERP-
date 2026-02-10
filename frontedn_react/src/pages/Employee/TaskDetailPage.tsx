@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { taskService } from '../../services/task';
+import { useAuth } from '../../contexts/AuthContext';
+import { SimpleMarkdownText } from '../../components/Common/UI/SimpleMarkdownText';
 import { Task, TaskAttachment, TaskNote, EmployeeReference } from '../../types';
 import { Button } from '../../components/Common/UI/Button';
 import { formatObjectiveNumber } from '../../utils/helpers';
@@ -10,6 +12,7 @@ const TaskDetailPage: React.FC = () => {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
 
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,6 +33,12 @@ const TaskDetailPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'details' | 'attachments' | 'notes'>('details');
   const [showNotificationMessage, setShowNotificationMessage] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState<string>('');
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [editDescription, setEditDescription] = useState('');
+  const [editPriority, setEditPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
+  const [editDueDate, setEditDueDate] = useState('');
+  const [savingDescription, setSavingDescription] = useState(false);
+  const [editError, setEditError] = useState<string>('');
 
   const loadTask = useCallback(async () => {
     if (!taskId) {
@@ -44,6 +53,9 @@ const TaskDetailPage: React.FC = () => {
       const nextTask = (response as any)?.task ?? response;
       setTask(nextTask);
       setNoteProgress(nextTask?.completion_percentage ?? 0);
+      setEditDescription(nextTask?.task_description || nextTask?.description || '');
+      setEditPriority((nextTask?.priority as any) || 'medium');
+      setEditDueDate(nextTask?.due_date ? nextTask.due_date.slice(0, 10) : '');
       
       // Set default recipients
       const defaults = new Set<string>();
@@ -245,6 +257,36 @@ const TaskDetailPage: React.FC = () => {
 
   const statusShortcuts: Task['status'][] = ['in_progress', 'completed', 'waiting'];
 
+  const employeeId = (user as any)?.employee_id as string | undefined;
+  const canEditDescription =
+    user?.role === 'employee' &&
+    employeeId &&
+    task &&
+    (task.assigned_to === employeeId ||
+      (task.assigned_to_multiple || []).includes(employeeId));
+
+  const handleSaveDescription = async () => {
+    if (!taskId || !task) return;
+    try {
+      setSavingDescription(true);
+      setEditError('');
+      const result = await taskService.updateTask(taskId, {
+        task_description: editDescription.trim() || task.task_description || task.description,
+        priority: editPriority,
+        due_date: editDueDate || null,
+      } as any);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to update description');
+      }
+      await loadTask();
+      setIsEditingDescription(false);
+    } catch (err: any) {
+      setEditError(err?.message || 'Failed to update description');
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading task details...</div>;
   }
@@ -293,7 +335,20 @@ const TaskDetailPage: React.FC = () => {
         <Button variant="ghost" onClick={() => navigate('/employee/task-management')}>
           ← Back to Tasks
         </Button>
-        <h1>{task.task_description || task.description || 'Task Details'}</h1>
+        <h1>
+          <SimpleMarkdownText
+            text={(() => {
+              const full = task.task_description || task.description || 'Task Details';
+              // For the header, show only the main goal (first line / before checklist)
+              const markerIndex = full.toLowerCase().indexOf('task checklist:');
+              if (markerIndex !== -1) {
+                return full.slice(0, markerIndex).trim() || full;
+              }
+              const [firstLine] = full.split('\n');
+              return (firstLine || '').trim() || full;
+            })()}
+          />
+        </h1>
       </div>
 
       <div className="detail-tabs">
@@ -315,13 +370,34 @@ const TaskDetailPage: React.FC = () => {
           <div className="detail-overview-grid">
             <div>
               <p className="label">Priority</p>
-              <span className={`priority-badge ${task.priority || 'low'}`}>
-                {(task.priority || 'low').toUpperCase()}
-              </span>
+              {isEditingDescription && canEditDescription ? (
+                <select
+                  value={editPriority}
+                  onChange={(e) => setEditPriority(e.target.value as any)}
+                >
+                  {['low', 'medium', 'high', 'urgent'].map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className={`priority-badge ${task.priority || 'low'}`}>
+                  {(task.priority || 'low').toUpperCase()}
+                </span>
+              )}
             </div>
             <div>
               <p className="label">Due date</p>
-              <strong>{formatDate(task.due_date)}</strong>
+              {isEditingDescription && canEditDescription ? (
+                <input
+                  type="date"
+                  value={editDueDate}
+                  onChange={(e) => setEditDueDate(e.target.value)}
+                />
+              ) : (
+                <strong>{formatDate(task.due_date)}</strong>
+              )}
             </div>
             <div>
               <p className="label">Strategic Objective</p>
@@ -350,7 +426,57 @@ const TaskDetailPage: React.FC = () => {
 
           <div className="detail-objective-card">
             <p className="label">Description</p>
-            <p>{task.task_description || task.description || 'No description provided.'}</p>
+            {isEditingDescription ? (
+              <div className="note-form">
+                <label>
+                  <span>Edit description</span>
+                  <textarea
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    rows={5}
+                  />
+                </label>
+                {editError && <p className="error-text">{editError}</p>}
+                <div className="note-form-actions">
+                  <Button
+                    variant="primary"
+                    size="small"
+                    onClick={handleSaveDescription}
+                    disabled={savingDescription}
+                  >
+                    {savingDescription ? 'Saving…' : 'Save'}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onClick={() => {
+                      setIsEditingDescription(false);
+                      setEditError('');
+                      setEditDescription(task.task_description || task.description || '');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p>
+                <SimpleMarkdownText
+                  text={task.task_description || task.description || 'No description provided.'}
+                />
+              </p>
+            )}
+            {canEditDescription && !isEditingDescription && (
+              <div style={{ marginTop: '0.75rem' }}>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onClick={() => setIsEditingDescription(true)}
+                >
+                  ✏️ Edit Description
+                </Button>
+              </div>
+            )}
           </div>
 
           {metadataFields.length > 0 && (

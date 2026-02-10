@@ -3,6 +3,7 @@ export interface User {
     email: string;
     name: string;
     role: 'superadmin' | 'employee';
+    employee_id?: string;
     department?: string;
     title?: string;
     location?: string;
